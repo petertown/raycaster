@@ -1,88 +1,43 @@
-
 @if(error) {
-    <p>{{ errorMessage }}</p>
-    } @else {
-    <div class="gamecontainer">
-      <canvas
-        id="orthagonal-canvas"
-        [width]="canvasWidth"
-        [height]="canvasHeight"
-        tabindex="1"
-      >
-        You require a browser that supports the canvas feature to play
-      </canvas>
-      <div class="framerate">
-        <div>
-          <span>Framerate: {{ timeRate }}</span>
-          <span class="small-gap"></span>
-          <button (click)="fullscreen()">Fullscreen</button>
-          <span class="small-gap"></span>
-          <input
-            type="range"
-            min="1"
-            max="10"
-            [formControl]="formWallHeight"
-            id="option-wallheight"
-          />
-        </div>
-        <div>
-          <input
-            type="checkbox"
-            id="option-vertical"
-            [formControl]="formVerticalLook"
-          />
-          <label for="option-vertical">Vertical look</label>
-          <span class="small-gap"></span>
-          <input
-            type="checkbox"
-            id="option-perspective"
-            [formControl]="formPerspective"
-          />
-          <label for="option-perspective">Correct perspective</label>
-          <span class="small-gap"></span>
-          <input
-            type="checkbox"
-            id="option-persskew"
-            [formControl]="formPerspectiveSkew"
-          />
-          <label for="option-persskew">Catacomb</label>
-          <span class="small-gap"></span>
-          <input
-            type="checkbox"
-            id="option-hover"
-            [formControl]="formHovertank"
-          />
-          <label for="option-hover">Hovertank</label>
-          <span class="small-gap"></span>
-          <input
-            type="checkbox"
-            id="option-walltextures"
-            [formControl]="formWallTextures"
-          />
-          <label for="option-walltextures">Wall textures</label>
-          <span class="small-gap"></span>
-          <input
-            type="checkbox"
-            id="option-floortextures"
-            [formControl]="formFloorTextures"
-          />
-          <label for="option-skytexture">Floor</label>
-          <span class="small-gap"></span>
-          <input
-            type="checkbox"
-            id="option-skytexture"
-            [formControl]="formSkyTexture"
-          />
-          <label for="option-skytexture">Sky</label>
-          <span class="small-gap"></span>
-          <input
-            type="checkbox"
-            id="option-lighting"
-            [formControl]="formLighting"
-          />
-          <label for="option-lighting">Lighting</label>
-        </div>
-      </div>
+<p>{{ errorMessage }}</p>
+} @else {
+<div class="gamecontainer">
+  <canvas id="orthagonal-canvas" [width]="canvasWidth" [height]="canvasHeight" tabindex="1">
+    You require a browser that supports the canvas feature to play
+  </canvas>
+  <div class="framerate">
+    <div>
+      <span>Framerate: {{ timeRate }}</span>
+      <span class="small-gap"></span>
+      <button (click)="fullscreen()">Fullscreen</button>
+      <span class="small-gap"></span>
+      <input type="range" min="1" max="10" [formControl]="formWallHeight" id="option-wallheight" />
     </div>
-    }
-    
+    <div>
+      <input type="checkbox" id="option-vertical" [formControl]="formVerticalLook" />
+      <label for="option-vertical">Vertical look</label>
+      <span class="small-gap"></span>
+      <input type="checkbox" id="option-perspective" [formControl]="formPerspective" />
+      <label for="option-perspective">Correct perspective</label>
+      <span class="small-gap"></span>
+      <input type="checkbox" id="option-persskew" [formControl]="formPerspectiveSkew" />
+      <label for="option-persskew">Catacomb</label>
+      <span class="small-gap"></span>
+      <input type="checkbox" id="option-hover" [formControl]="formHovertank" />
+      <label for="option-hover">Hovertank</label>
+      <span class="small-gap"></span>
+      <input type="checkbox" id="option-walltextures" [formControl]="formWallTextures" />
+      <label for="option-walltextures">Wall textures</label>
+      <span class="small-gap"></span>
+      <input type="checkbox" id="option-floortextures" [formControl]="formFloorTextures" />
+      <label for="option-skytexture">Floor</label>
+      <span class="small-gap"></span>
+      <input type="checkbox" id="option-skytexture" [formControl]="formSkyTexture" />
+      <label for="option-skytexture">Sky</label>
+      <span class="small-gap"></span>
+      <input type="checkbox" id="option-lighting" [formControl]="formLighting" />
+      <label for="option-lighting">Lighting</label>
+    </div>
+  </div>
+</div>
+}

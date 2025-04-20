@@ -8,9 +8,8 @@ describe('OrthagonalComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [OrthagonalComponent]
-    })
-    .compileComponents();
+      imports: [OrthagonalComponent],
+    }).compileComponents();
 
     fixture = TestBed.createComponent(OrthagonalComponent);
     component = fixture.componentInstance;
