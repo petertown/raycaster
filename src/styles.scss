@@ -1,1 +1,14 @@
-/* You can add global styles to this file, and also import other style files */
+* {
+  // Fix the layout style
+  box-sizing: border-box;
+  // Default fonts
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  // Remove the margin that is around the body by default
+  margin: 0;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
