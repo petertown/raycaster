@@ -210,6 +210,7 @@ export class RaycasterRays {
       let hitWall = false;
       // get the floor of where we are, then see what we need to do to check from there
 
+      // can probably do this more simply win the code above
       let mapX = Math.floor(currentX);
       let mapY = Math.floor(currentY);
 
@@ -258,7 +259,7 @@ export class RaycasterRays {
     };
   }
 
-  // Do a reflected array and return the result
+  // Do a reflected ray and return the result
   public reflectRay(rayResult: RayResult, map: Block[][]): RayResult {
     let xd = rayResult.xd * (rayResult.wallX ? -1 : 1);
     let yd = rayResult.yd * (rayResult.wallX ? 1 : -1);
@@ -270,28 +271,27 @@ export class RaycasterRays {
     return this.castRay(xa, ya, xd, yd, map);
   }
 
-  // Chances are it'll be totally different, calculate the collision with the Blocks around the player
-  // As in, do the grid by grid check, but when we are in a grid check against that specific grid's collision stuff
-  // And build those in advance
-  // OR build a collision grid, when making the map, and collide with that? Might be simpler, and only have to do one ray with it, so it being bigger isn't an issue
-  // So a grid that's four times bigger than the standard grid, pre-processing so that it's quicker in game
-  // Then cast the ray, until it hits, and if it hits a wall along X, set Y to 0 and keep doing a ray with just the X
-  // Otherwise if it's a wall along Y, set X to 0 and keep doing ray along X only
-  public collisionRay(xa: number, ya: number, xd: number, yd: number, collisionMap: Block[][], collisionMapScale: number): RayResult {
-    // multiply the xa/ya/xd/yd by collisionMapScale
-    let result = this.castRay(xa, ya, xd, yd, collisionMap);
-    // Divide result by 4
+  // Do a continued ray that slides along the wall and return the result until we hit the distance of 1.0
+  public slideRay(rayResult: RayResult, map: Block[][]): RayResult {
+    let xa = rayResult.xHit - rayResult.xd * 0.01; // move slightly back so we don't get all stuck up in there
+    let ya = rayResult.yHit - rayResult.yd * 0.01;
+    let xd = rayResult.xd * Math.max(0, 1.0 - rayResult.distance);
+    let yd = rayResult.yd * Math.max(0, 1.0 - rayResult.distance);
+    if (rayResult.wallX) {
+      xd = 0;
+    } else {
+      yd = 0;
+    }
 
-    // better yet, change the xHit/yHit to be where it should go to after movement (but back a little, for inaccuracies)
-    result.distance = Math.min(result.distance, 1); // cap distance at 1 of the ray lengths
-    result.xHit = result.xd * result.distance;
-    result.yHit = result.yd * result.distance;
+    return this.castRay(xa, ya, xd, yd, map);
+  }
 
-
-    // This might need to be done a second time, for axis which wasn't hit
-    // So work out how much movement is left after the ray is hit on one axis, then continue the other axis straight until that one hits?
-
-    return result;
+  // Set the ray to only be the length it was intended to be
+  public capRay(rayResult: RayResult) {
+    rayResult.distance = Math.min(1.0, rayResult.distance);
+    rayResult.xHit = rayResult.xa + rayResult.xd * rayResult.distance;
+    rayResult.yHit = rayResult.ya + rayResult.yd * rayResult.distance;
+    return rayResult;
   }
 
   public getScreenRayVectors(

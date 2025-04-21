@@ -28,63 +28,73 @@ export class RaycasterMap {
   // Always do [x] [y] consistently
   mapSize: number;
   mapData!: Block[][];
-  collisionData!: Block[][];
   lights!: Light[];
-
-  collisionMapScale = 4;
-  collisionSize: number;
 
   constructor(mapSize: number) {
     this.mapSize = mapSize;
-    this.collisionSize = mapSize * this.collisionMapScale;
 
     // Populate the map
     this.buildMap();
 
     // randomly make lights in empty blocks
     this.createLights();
-
-    // make collision map 4x the size of the real map, at least for now, so it's more detailed for handling collisions
-    this.buildCollisionMap();
   }
 
-  private buildCollisionMap() {
-    this.collisionData = [];
+  // Build a small map to raytrace with to find out where we can walk
+  // So make a sectin of map from the 3x3 around the player, but with more detail
+  // if we are making spots outside of the map, simply make them impassible totally
+  public buildCollisionMap(playerX: number, playerY: number) {
+    let mapX = Math.floor(playerX);
+    let mapY = Math.floor(playerY);
+
+    let collisionBase = 3; // It actually doesn't work with anything but 3
+    let collisionData: Block[][] = [];
+    let collisionScale = 4; // we should take the region we
+    let collisionSize = collisionBase * collisionScale; // 3x3 centered on the player position, BUT we
     // Make an empty map first - the entire edge is solid even bordering the sky
-    for (let x = 0; x < this.collisionSize; x++) {
+    for (let x = 0; x < collisionSize; x++) {
       const row: Block[] = [];
-      for (let y = 0; y < this.collisionSize; y++) {
+      for (let y = 0; y < collisionSize; y++) {
         row.push({
-          type:
-            x === 0 || y === 0 || x === this.collisionSize - 1 || y === this.collisionSize - 1
-              ? BlockType.Wall
-              : BlockType.Empty,
+          type: BlockType.Empty,
           open: 0.0,
         });
       }
-      this.collisionData.push(row);
+      collisionData.push(row);
     }
 
     // use real map data and add in collision map
-    for (let x = 0; x < this.mapSize; x++) {
-      const row = this.mapData[x];
-      for (let y = 0; y < this.mapSize; y++) {
-        const block = row[y];
+    // Center on player, so do -1 to 1 where 0 is the playerX
+    // Just do solid walls, doors come later (when they can open and close)
+    for (let x = -1; x <= 1; x++) {
+      for (let y = -1; y <= 1; y++) {
+        let coordX = x + mapX;
+        let coordY = y + mapY;
 
-        // top left collision point
-        let colX = x * this.collisionMapScale;
-        let colY = y * this.collisionMapScale;
+        let solid = false;
+        if (coordX < 0 || coordX >= this.mapSize || coordY < 0 || coordY >= this.mapSize) {
+          solid = true;
+        } else {
+          solid = this.mapData[coordX][coordY].type === BlockType.Wall;
+        }
 
-        // We want to set the points that map to it to true, plus one point around it
-        for (let xc = colX - 1; xc < colX + 1 + this.collisionMapScale; xc++) {
-          for (let yc = colY - 1; yc < colY + 1 + this.collisionMapScale; yc++) {
-            if (xc >= 0 && xc < this.collisionMapScale && yc >= 0 && yc < this.collisionMapScale) {
-              //this.collisionData[xc][yc].type = BlockType.Wall;
+        if (solid) {
+          // top left of the collision array
+          let colX = (x + 1) * collisionScale;
+          let colY = (y + 1) * collisionScale;
+
+          // We want to set the points that map to it to true, plus one point around it
+          for (let xc = colX - 1; xc < colX + 1 + collisionScale; xc++) {
+            for (let yc = colY - 1; yc < colY + 1 + collisionScale; yc++) {
+              if (xc >= 0 && xc < collisionSize && yc >= 0 && yc < collisionSize) {
+                collisionData[xc][yc].type = BlockType.Wall;
+              }
             }
           }
         }
       }
     }
+    return collisionData;
   }
 
   private createLights() {

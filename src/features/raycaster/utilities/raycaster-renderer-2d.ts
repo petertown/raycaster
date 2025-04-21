@@ -1,5 +1,6 @@
 import { RaycasterCanvas } from './raycaster-canvas';
 import { BlockType, RaycasterMap } from './raycaster-map';
+import { mod } from './raycaster-math';
 import { RaycasterRays, RayResult } from './raycaster-ray';
 
 export class RaycasterRenderer2D {
@@ -16,7 +17,7 @@ export class RaycasterRenderer2D {
   drawVisible = false;
   drawCollision = false;
   drawLights = false;
-  drawCone = true;
+  drawCone = false;
 
   backgroundColour = '#00000099';
   blockColour = '#cccccc';
@@ -43,8 +44,9 @@ export class RaycasterRenderer2D {
     this.canvas.context.stroke();
 
     // Draw the entire map, just the blocks that are walls
-    //this.drawBlocks(drawArea);
-    this.drawCollisionBlocks(drawArea);
+    this.drawBlocks(drawArea);
+
+    this.drawCollisionRays(playerX, playerY, playerR, drawArea);
 
     // Draw player field of view
     if (this.drawCone) {
@@ -52,9 +54,11 @@ export class RaycasterRenderer2D {
     }
 
     // Draw lights
-    for (let light of this.map.lights) {
-      let colour = 'green';
-      this.drawCircle(light.x, light.y, 0.1, drawArea, colour);
+    if (this.drawLights) {
+      for (let light of this.map.lights) {
+        let colour = 'green';
+        this.drawCircle(light.x, light.y, 0.1, drawArea, colour);
+      }
     }
 
     // Draw rays cast for a single column
@@ -126,21 +130,6 @@ export class RaycasterRenderer2D {
     let xHit = rayResult.xHit;
     let yHit = rayResult.yHit;
 
-    // collision ray
-    if (this.drawCollision) {
-      let movementSize = 10;
-      rayResult = this.rays.collisionRay(
-        xa,
-        ya,
-        xd * movementSize,
-        yd * movementSize,
-        this.map.collisionData,
-        this.map.collisionMapScale,
-      );
-      colour = 'orange';
-      this.drawRay(drawArea, rayResult, colour);
-    }
-
     for (let reflect = 0; reflect < 0; reflect++) {
       rayResult = this.rays.reflectRay(rayResult, this.map.mapData);
       colour = 'blue';
@@ -177,6 +166,8 @@ export class RaycasterRenderer2D {
       rayResult.distance * rayResult.yd + rayResult.ya,
       drawArea,
     );
+
+    //let rayEnd = this.getMapDrawPosition(rayResult.xHit, rayResult.yHit, drawArea);
 
     this.drawLine(rayStart, rayEnd, colour);
   }
@@ -220,25 +211,43 @@ export class RaycasterRenderer2D {
     this.canvas.context.closePath();
   }
 
-  private drawCollisionBlocks(drawArea: { x1: number; y1: number; x2: number; y2: number }) {
-    let map = this.map.collisionData;
+  private drawCollisionRays(
+    playerX: number,
+    playerY: number,
+    playerR: number,
+    drawArea: { x1: number; y1: number; x2: number; y2: number },
+  ) {
+    // get collision data
+    let collisionMap = this.map.buildCollisionMap(playerX, playerY);
+    let collisionSize = collisionMap.length;
+    let collisionMapScale = 4;
 
-    let mapColour = 'pink';
+    // draw this map centered on the players map element
+    let mapX = Math.floor(playerX);
+    let mapY = Math.floor(playerY);
 
-    let blockSize = this.getMapDrawPosition(1, 1, drawArea, true, this.map.collisionSize);
-    for (let x = 0; x < this.map.collisionSize; x++) {
-      let row = map[x];
-      for (let y = 0; y < this.map.collisionSize; y++) {
+    let mapColour = '#ff999966';
+
+    let blockSize = this.getMapDrawPosition(
+      1,
+      1,
+      drawArea,
+      true,
+      this.map.mapSize * collisionMapScale,
+    );
+    for (let x = 0; x < collisionSize; x++) {
+      let row = collisionMap[x];
+      for (let y = 0; y < collisionSize; y++) {
         let block = row[y];
         if (block.type === BlockType.Wall) {
           this.canvas.context.fillStyle = mapColour;
           this.canvas.context.beginPath();
           let topLeft = this.getMapDrawPosition(
-            x,
-            y,
+            x + (mapX - 1) * collisionMapScale,
+            y + (mapY - 1) * collisionMapScale,
             drawArea,
             false,
-            this.map.mapSize * this.map.collisionMapScale,
+            this.map.mapSize * collisionMapScale,
           );
           this.canvas.context.fillRect(topLeft.x, topLeft.y, blockSize.x, blockSize.y);
           this.canvas.context.stroke();
@@ -246,17 +255,62 @@ export class RaycasterRenderer2D {
       }
     }
 
-    // Draw border
+    // Draw border so it's easier to understand
+    let drawTL = this.getMapDrawPosition(
+      (mapX - 1) * collisionMapScale,
+      (mapY - 1) * collisionMapScale,
+      drawArea,
+      false,
+      this.map.mapSize * collisionMapScale,
+    );
+    let drawBL = this.getMapDrawPosition(
+      collisionSize,
+      collisionSize,
+      drawArea,
+      true,
+      this.map.mapSize * collisionMapScale,
+    );
     this.canvas.context.strokeStyle = 'black';
     this.canvas.context.beginPath();
-    this.canvas.context.rect(
-      drawArea.x1,
-      drawArea.y1,
-      drawArea.x2 - drawArea.x1,
-      drawArea.y2 - drawArea.y1,
-    );
+    this.canvas.context.rect(drawTL.x, drawTL.y, drawBL.x, drawBL.y);
     this.canvas.context.stroke();
     this.canvas.context.closePath();
+
+    // Fire a ray into this using this player position in the ray
+    let movementAmount = 1.0;
+    let colX = collisionMapScale * (1 + mod(playerX, 1));
+    let colY = collisionMapScale * (1 + mod(playerY, 1));
+    let rayX = Math.cos(playerR) * movementAmount * collisionMapScale;
+    let rayY = Math.sin(playerR) * movementAmount * collisionMapScale;
+
+    // Do one ray, then do another
+    // and at the end we don't care about the actual rayResults, we care about the difference between start and end
+    // divided by 4 of course
+    let rayResult1 = this.rays.capRay(this.rays.castRay(colX, colY, rayX, rayY, collisionMap));
+    let rayResult2: RayResult | null = null;
+
+    // If we have ray left, we should do a second ray
+    let secondRay = rayResult1.distance < 1.0;
+
+    if (secondRay) {
+      // Do the test a little further back, so we don't just collide with the next square
+      rayResult2 = this.rays.capRay(this.rays.slideRay(rayResult1, collisionMap));
+    }
+    rayResult1.yHit = rayResult1.yHit / 4.0 - 1 + mapX;
+    rayResult1.xa = rayResult1.xa / 4.0 - 1 + mapX;
+    rayResult1.ya = rayResult1.ya / 4.0 - 1 + mapY;
+    rayResult1.distance = rayResult1.distance / 4.0;
+
+    this.drawRay(drawArea, rayResult1, 'red');
+
+    if (rayResult2) {
+      rayResult2.xHit = rayResult2.xHit / 4.0 - 1 + mapX;
+      rayResult2.yHit = rayResult2.yHit / 4.0 - 1 + mapX;
+      rayResult2.xa = rayResult2.xa / 4.0 - 1 + mapX;
+      rayResult2.ya = rayResult2.ya / 4.0 - 1 + mapY;
+      rayResult2.distance = rayResult2.distance / 4.0;
+      this.drawRay(drawArea, rayResult2, 'green');
+    }
   }
 
   private drawBlocks(drawArea: { x1: number; y1: number; x2: number; y2: number }) {

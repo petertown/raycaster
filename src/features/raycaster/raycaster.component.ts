@@ -2,7 +2,8 @@ import { Component } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { RaycasterCanvas } from './utilities/raycaster-canvas';
 import { RaycasterMap } from './utilities/raycaster-map';
-import { RaycasterRays } from './utilities/raycaster-ray';
+import { mod } from './utilities/raycaster-math';
+import { RaycasterRays, RayResult } from './utilities/raycaster-ray';
 import { RaycasterRenderer2D } from './utilities/raycaster-renderer-2d';
 import { RaycasterRenderer3D } from './utilities/raycaster-renderer-3d';
 import { RaycasterTextures } from './utilities/raycaster-textures';
@@ -24,8 +25,8 @@ export class RaycasterComponent {
   drawMap = false;
 
   // Real size of screen (for aspect ratio calculations)
-  renderWidth = 320;
-  renderHeight = 200;
+  renderWidth = 640;
+  renderHeight = 400;
   displayWidth = 640;
   displayHeight = 480;
   displayRatio = 640.0 / 480.0;
@@ -56,13 +57,13 @@ export class RaycasterComponent {
   // Ray utility class
   rays!: RaycasterRays;
   // Texture utility
-  textures: RaycasterTextures;
+  textures!: RaycasterTextures;
 
   // Timing
   timeDelta = 0;
   timeLast = new Date().getTime();
   timeRate = 0;
-  timeMin = 33; // 33 for Approx 30FPS, 15 for about 60
+  timeMin = 13; // 33 for Approx 30FPS, 15 for about 60, 13 for 75
   stillDrawing = false;
 
   constructor() {}
@@ -202,8 +203,48 @@ export class RaycasterComponent {
     this.playerV = -this.mouseY;
     this.playerZ = (0.2 * -this.mouseY + 1.0) / 2.0;
 
-    this.playerX += Math.cos(this.playerR) * forwardSpeed * 0.0025 * this.timeDelta;
-    this.playerY += Math.sin(this.playerR) * forwardSpeed * 0.0025 * this.timeDelta;
+    if (forwardSpeed !== 0) {
+      this.movePlayer(forwardSpeed);
+    }
+  }
+
+  // Use the rays to figure out how far the player should move
+  private movePlayer(forwardSpeed: number) {
+    /* this.playerX += Math.cos(this.playerR) * forwardSpeed * 0.0025 * this.timeDelta;
+    this.playerY += Math.sin(this.playerR) * forwardSpeed * 0.0025 * this.timeDelta; */
+
+    // get collision data
+    let collisionMap = this.map.buildCollisionMap(this.playerX, this.playerY);
+    let collisionSize = collisionMap.length;
+    let collisionMapScale = 4;
+
+    // Fire a ray into this using this player position in the ray
+    // But move them back a bit so we don't just go through corners... geez!
+    let movementAmount = this.timeDelta * forwardSpeed * 0.0025;
+    let rayX = Math.cos(this.playerR) * movementAmount * collisionMapScale;
+    let rayY = Math.sin(this.playerR) * movementAmount * collisionMapScale;
+    let colX = collisionMapScale * (1 + mod(this.playerX, 1));
+    let colY = collisionMapScale * (1 + mod(this.playerY, 1));
+
+    // Do one ray, then do another
+    // and at the end we don't care about the actual rayResults, we care about the difference between start and end
+    // divided by 4 of course
+    let rayResult1 = this.rays.capRay(this.rays.castRay(colX, colY, rayX, rayY, collisionMap));
+    let differenceX = rayResult1.xHit - colX;
+    let differenceY = rayResult1.yHit - colY;
+
+    let rayResult2: RayResult | null = null;
+
+    // If we have ray left, we should do a second ray
+    if (rayResult1.distance < 1.0) {
+      // Do the test a little further back, so we don't just collide with the next square
+      rayResult2 = this.rays.capRay(this.rays.slideRay(rayResult1, collisionMap));
+      differenceX = rayResult2.xHit - colX;
+      differenceY = rayResult2.yHit - colY;
+    }
+
+    this.playerX += differenceX / 4.0;
+    this.playerY += differenceY / 4.0;
   }
 
   private gameLogic() {

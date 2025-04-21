@@ -1,3 +1,5 @@
+import { mod } from "./raycaster-math";
+
 export class RaycasterCanvas {
   width: number;
   height: number;
@@ -82,17 +84,11 @@ export class RaycasterCanvas {
   ) => {
     if (wrap) {
       // first wrap the x and y coords to the width/height
-      x = this.mod(x, width);
-      y = this.mod(y, height);
+      x = mod(x, width);
+      y = mod(y, height);
     }
     const red = y * (width * 4) + x * 4;
     // return R G B A
     return { red: red, green: red + 1, blue: red + 2, alpha: red + 3 };
   };
-
-  // Move this into some util, I think
-  // I don't even remember how this works
-  public mod(n: number, m: number) {
-    return ((n % m) + m) % m;
-  }
 }
