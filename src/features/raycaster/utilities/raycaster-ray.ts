@@ -1,0 +1,323 @@
+// Will store all functions for handling rays in here
+// Just as functions I guess, no need for a class? Or make it a class that can store the map and use it?
+
+import { Block, BlockType, RaycasterMap } from './raycaster-map';
+
+export interface Direction {
+  x: number;
+  y: number;
+}
+
+export interface RayResult {
+  xa: number;
+  ya: number;
+  xd: number;
+  yd: number;
+  xHit: number;
+  yHit: number;
+  distance: number;
+  textureCoord: number; //coordinate of texture (should we wrap it here?)
+  wallX: boolean; // Are we on the X side of the wall
+  edge: boolean;
+  mapCoords: Block[];
+}
+
+export class RaycasterRays {
+  // map: RaycasterMap;
+  // take the Block[][] when asking for rays to be cast anyway I htink
+
+  constructor(map: RaycasterMap) {
+    // this.map = map;
+  }
+
+  public castRay(xa: number, ya: number, xd: number, yd: number, map: Block[][]): RayResult {
+    // How big is this map?
+    let mapSizeX = map.length;
+    let mapSizeY = map[0].length;
+
+    // Which wall do we hit?
+    let wallX = false; // if not this, then Y wall
+    let hitEdge = false;
+
+    // now we start the hard part - go from that position until we hit a wall of some kind (or leave the map, we return the distance of 999999 I think for that)
+
+    // find the distance of when the horizontal grid is hit, and the distance to the vertical grid
+    // (probably 0 as we are exactly on the gridline but we need to handle that case anyway)
+    let nextX: number;
+    let changeX: number;
+    let distanceX: number;
+    let nextY: number;
+    let changeY: number;
+    let distanceY: number;
+
+    // start from player and trace the ray using these params
+    let currentX = xa;
+    let currentY = ya;
+
+    let currentLength = 0; // How many rays were needed to hit the wall/edge
+
+    // Make a list of Blocks we go through, starting with where we are now
+    let blockX = Math.floor(currentX);
+    let blockY = Math.floor(currentY);
+    hitEdge = blockX < 0 || blockX >= mapSizeX || blockY < 0 || blockY >= mapSizeY;
+    if (hitEdge) {
+      // We are outside, just act like we've hit straight away so it doesn't crash
+      return {
+        xa: xa,
+        ya: ya,
+        xd: xd,
+        yd: yd,
+        xHit: xa,
+        yHit: ya,
+        distance: 0.0,
+        textureCoord: 0,
+        wallX: false,
+        edge: hitEdge,
+        mapCoords: [],
+      };
+    }
+
+    let currentBlock = map[blockX][blockY];
+    let mapCoords = [currentBlock];
+
+    // if x is positive it will be rounded up, otherwise it'll be rounded down, same for y
+    if (xd > 0) {
+      nextX = Math.ceil(currentX);
+      changeX = 1;
+    } else {
+      nextX = Math.floor(currentX);
+      changeX = -1;
+    }
+    if (yd > 0) {
+      changeY = 1;
+      nextY = Math.ceil(currentY);
+    } else {
+      changeY = -1;
+      nextY = Math.floor(currentY);
+    }
+
+    // Loop until we reach a limit or a wall - make sure to limit so we don't go out of bounds!
+    let hit = false;
+    let tests = 0;
+    while (!hit) {
+      tests++;
+
+      // First check if there is a half wall in the mapCoord we are currently testing
+      // offset the gap to be slightly closer to player so shadows work
+      let wallOffset = 0.01;
+      if (currentBlock.type === BlockType.XWall) {
+        // Halfwall X (so along X axis so Y is always the same)
+        let startX = xa;
+        let startY = ya;
+        let vectX = xd;
+        let vectY = yd;
+
+        let wallY = blockY + 0.5 + (changeY > 0 ? -wallOffset : wallOffset); // offset the wall so shadows work
+        let wallX1 = blockX;
+        let wallX2 = blockX + 1;
+
+        // so when does the Y meet?
+        let rayDistance = (wallY - startY) / vectY;
+        // where is X then?
+        let hitX = startX + vectX * rayDistance;
+
+        // TODO: Will need to take into account opening and closing of the half wall (as in, some parts of the wall are open or closed)
+        if (rayDistance > 0 && hitX >= wallX1 && hitX <= wallX2) {
+          // return the hit of this half wall
+          return {
+            xa: xa,
+            ya: ya,
+            xd: xd,
+            yd: yd,
+            xHit: hitX,
+            yHit: wallY,
+            distance: rayDistance,
+            textureCoord: hitX - wallX1,
+            wallX: false,
+            edge: false,
+            mapCoords: mapCoords,
+          };
+        }
+      } else if (currentBlock.type === BlockType.YWall) {
+        // Halfwall Y (so along Y axis so X is always the same)
+        let startX = xa;
+        let startY = ya;
+        let vectX = xd;
+        let vectY = yd;
+
+        let wallX = blockX + 0.5 + (changeX > 0 ? -wallOffset : wallOffset); // offset for shadows
+        let wallY1 = blockY;
+        let wallY2 = blockY + 1;
+
+        // so when does the X meet?
+        let rayDistance = (wallX - startX) / vectX;
+        // where is Y then?
+        let hitY = startY + vectY * rayDistance;
+
+        if (rayDistance > 0 && hitY >= wallY1 && hitY <= wallY2) {
+          // return the hit of this half wall
+          return {
+            xa: xa,
+            ya: ya,
+            xd: xd,
+            yd: yd,
+            xHit: wallX,
+            yHit: hitY,
+            distance: rayDistance,
+            textureCoord: hitY - wallY1,
+            wallX: true,
+            edge: false,
+            mapCoords: mapCoords,
+          };
+        }
+      }
+
+      // This is going to break if we have an exact angle, so let's never have one ok? Or work something out for it?
+      // this is how long the line is away from the next gridline
+      if (xd === 0) {
+        distanceX = 9999999;
+      } else {
+        distanceX = (nextX - currentX) / xd;
+      }
+      if (yd === 0) {
+        distanceY = 9999999;
+      } else {
+        distanceY = (nextY - currentY) / yd;
+      }
+
+      wallX = distanceX < distanceY;
+
+      // add to the length of the ray
+      if (wallX) {
+        currentLength += distanceX;
+
+        // calculate the new point we are at
+        currentX = nextX;
+        currentY = ya + yd * currentLength;
+
+        nextX += changeX;
+      } else {
+        currentLength += distanceY;
+
+        // calculate the new point we are at
+        currentX = xa + xd * currentLength;
+        currentY = nextY;
+
+        nextY += changeY;
+      }
+
+      // If we haven't hit the edge, is it bordering any walls?
+      let hitWall = false;
+      // get the floor of where we are, then see what we need to do to check from there
+
+      let mapX = Math.floor(currentX);
+      let mapY = Math.floor(currentY);
+
+      if (wallX) {
+        if (changeX < 0) {
+          mapX = mapX - 1;
+        }
+      } else {
+        if (changeY < 0) {
+          mapY = mapY - 1;
+        }
+      }
+
+      blockX = mapX;
+      blockY = mapY;
+      // If we hit the edge, stop as well
+      hitEdge = blockX < 0 || blockX >= mapSizeX || blockY < 0 || blockY >= mapSizeY;
+
+      if (!hitEdge) {
+        currentBlock = map[mapX][mapY];
+        hitWall = currentBlock.type === BlockType.Wall;
+        // add it to the list of mapCoords to check for sprites later
+        mapCoords.push(currentBlock);
+      }
+
+      // use the "tests" check to make sure I don't break something and loop forever
+      if (hitEdge || hitWall || tests > 1000) {
+        hit = true;
+      }
+    }
+
+    let textureCoord = wallX ? -currentY * changeX : currentX * changeY;
+
+    return {
+      xa: xa,
+      ya: ya,
+      xd: xd,
+      yd: yd,
+      xHit: currentX,
+      yHit: currentY,
+      distance: currentLength,
+      textureCoord: textureCoord,
+      wallX: wallX,
+      edge: hitEdge,
+      mapCoords: mapCoords,
+    };
+  }
+
+  // Do a reflected array and return the result
+  public reflectRay(rayResult: RayResult, map: Block[][]): RayResult {
+    let xd = rayResult.xd * (rayResult.wallX ? -1 : 1);
+    let yd = rayResult.yd * (rayResult.wallX ? 1 : -1);
+    let xa = rayResult.xHit + xd * 0.0001;
+    let ya = rayResult.yHit + yd * 0.0001;
+
+    // Interestingly, it seems to get stuck in all walls but the top one? Offset the ray?
+    // Yes that works - I assume I need to fix up the accuracy in the actual ray cast but I can do that later
+    return this.castRay(xa, ya, xd, yd, map);
+  }
+
+  // Chances are it'll be totally different, calculate the collision with the Blocks around the player
+  // As in, do the grid by grid check, but when we are in a grid check against that specific grid's collision stuff
+  // And build those in advance
+  // OR build a collision grid, when making the map, and collide with that? Might be simpler, and only have to do one ray with it, so it being bigger isn't an issue
+  // So a grid that's four times bigger than the standard grid, pre-processing so that it's quicker in game
+  // Then cast the ray, until it hits, and if it hits a wall along X, set Y to 0 and keep doing a ray with just the X
+  // Otherwise if it's a wall along Y, set X to 0 and keep doing ray along X only
+  public collisionRay(xa: number, ya: number, xd: number, yd: number, collisionMap: Block[][], collisionMapScale: number): RayResult {
+    // multiply the xa/ya/xd/yd by collisionMapScale
+    let result = this.castRay(xa, ya, xd, yd, collisionMap);
+    // Divide result by 4
+
+    // better yet, change the xHit/yHit to be where it should go to after movement (but back a little, for inaccuracies)
+    result.distance = Math.min(result.distance, 1); // cap distance at 1 of the ray lengths
+    result.xHit = result.xd * result.distance;
+    result.yHit = result.yd * result.distance;
+
+
+    // This might need to be done a second time, for axis which wasn't hit
+    // So work out how much movement is left after the ray is hit on one axis, then continue the other axis straight until that one hits?
+
+    return result;
+  }
+
+  public getScreenRayVectors(
+    aspectRatio: number,
+    width: number,
+    height: number,
+    radians: number,
+  ): Direction[] {
+    let initialRays: Direction[] = [];
+
+    // one for each column of the canvas
+    for (let x = 0; x < width; x++) {
+      // make the field of view
+      const xdBase = 1.0;
+      const ydBase = aspectRatio * ((x - width / 2.0) / width);
+
+      initialRays.push(this.rotateRayDirection({ x: xdBase, y: ydBase }, radians));
+    }
+
+    return initialRays;
+  }
+
+  public rotateRayDirection(direction: Direction, radians: number): Direction {
+    // Rotate this ray by the player angle
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return { x: direction.x * cos - direction.y * sin, y: direction.x * sin + direction.y * cos };
+  }
+}

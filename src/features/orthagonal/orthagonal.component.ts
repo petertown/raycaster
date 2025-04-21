@@ -93,8 +93,8 @@ export class OrthagonalComponent {
   keyright = false;
 
   // canvas
-  private canvas: HTMLCanvasElement;
-  private canvasContext: CanvasRenderingContext2D;
+  private canvas!: HTMLCanvasElement;
+  private canvasContext!: CanvasRenderingContext2D;
 
   // ALL TEXTURES SHOULD BE SAME SIZE - CURRENTLY 64X64, always square
   private textureSize = 64;
@@ -102,8 +102,8 @@ export class OrthagonalComponent {
   private skyTextureWidth = 256;
   private skyTextureHeight = 400;
   // List of images - use ".data" to get the raw data
-  private textures: ImageData[];
-  private specialTextures: ImageData[];
+  private textures!: ImageData[];
+  private specialTextures!: ImageData[];
 
   // Lighting config
   private ambientColour: Colour = {
@@ -247,7 +247,7 @@ export class OrthagonalComponent {
     const canvasElement = document.getElementById('orthagonal-canvas') as HTMLCanvasElement;
 
     if (canvasElement) {
-      const canvasContext = canvasElement.getContext('2d');
+      const canvasContext = canvasElement.getContext('2d', { willReadFrequently: true });
 
       if (canvasContext) {
         this.canvas = canvasElement;
@@ -491,6 +491,11 @@ export class OrthagonalComponent {
   // so maybe two functions, one to take the ray and use it, and one to build the rays
   // maybe a simpler ray function that just goes to get the distance only
   private screenRay(x: number): RayResult {
+    // CHANGE IT SO THAT THERE'S NO REF TO THE RENDERX and RENDERY beyond this point
+    let xa = this.renderX;
+    let ya = this.renderY;
+    // THATS WHY THE LIGHT RAYS NEVER WORKED
+
     let xd: number;
     let yd: number;
 
@@ -589,14 +594,14 @@ export class OrthagonalComponent {
 
         // calculate the new point we are at
         currentX = nextX;
-        currentY = this.renderY + yd * currentLength;
+        currentY = ya + yd * currentLength;
 
         nextX += changeX;
       } else {
         currentLength += distanceY;
 
         // calculate the new point we are at
-        currentX = this.renderX + xd * currentLength;
+        currentX = xa + xd * currentLength;
         currentY = nextY;
 
         nextY += changeY;
