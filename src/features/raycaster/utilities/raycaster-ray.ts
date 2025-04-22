@@ -1,7 +1,8 @@
 // Will store all functions for handling rays in here
 // Just as functions I guess, no need for a class? Or make it a class that can store the map and use it?
 
-import { Block, BlockType, RaycasterMap } from './raycaster-map';
+import { Block, BlockType } from './raycaster-map';
+import { rotateVectorDirection } from './raycaster-math';
 
 export interface Direction {
   x: number;
@@ -234,7 +235,8 @@ export class RaycasterRays {
       }
     }
 
-    let textureCoord = wallX ? -currentY * changeX : currentX * changeY;
+    let textureCoord = wallX ? currentY * changeX : -currentX * changeY;
+    textureCoord = textureCoord - Math.floor(textureCoord);
 
     return {
       xa: xa,
@@ -288,6 +290,7 @@ export class RaycasterRays {
 
   public getScreenRayVectors(
     aspectRatio: number,
+    projectionLength: number,
     width: number,
     height: number,
     radians: number,
@@ -297,19 +300,12 @@ export class RaycasterRays {
     // one for each column of the canvas
     for (let x = 0; x < width; x++) {
       // make the field of view
-      const xdBase = 1.0;
+      const xdBase = projectionLength;
       const ydBase = aspectRatio * ((x - width / 2.0) / width);
 
-      initialRays.push(this.rotateRayDirection({ x: xdBase, y: ydBase }, radians));
+      initialRays.push(rotateVectorDirection({ x: xdBase, y: ydBase }, radians));
     }
 
     return initialRays;
-  }
-
-  public rotateRayDirection(direction: Direction, radians: number): Direction {
-    // Rotate this ray by the player angle
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    return { x: direction.x * cos - direction.y * sin, y: direction.x * sin + direction.y * cos };
   }
 }

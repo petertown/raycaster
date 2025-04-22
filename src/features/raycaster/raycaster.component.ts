@@ -21,13 +21,13 @@ export class RaycasterComponent {
   canvas!: RaycasterCanvas;
 
   // Game settings
-  mapSize = 32;
+  mapSize = 16;
   drawMap = false;
 
   // Player position
-  playerX = this.mapSize / 2.0;
-  playerY = this.mapSize / 2.0;
-  playerZ = 0.5;
+  playerX = 0.5 + this.mapSize / 2.0;
+  playerY = 0.5 + this.mapSize / 2.0;
+  playerZ = 0.6;
   playerR = 0.0;
   playerV = 0.0;
 
@@ -71,17 +71,22 @@ export class RaycasterComponent {
   private initGame(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.canvas = new RaycasterCanvas();
-      this.map = new RaycasterMap(this.mapSize);
       this.rays = new RaycasterRays();
       this.textures = new RaycasterTextures();
-      this.renderer2d = new RaycasterRenderer2D(this.map, this.canvas, this.rays);
-      this.renderer3d = new RaycasterRenderer3D(this.map, this.canvas, this.rays, this.textures);
 
       this.initControls();
 
       // Last step, load the textures in, which is async and when it's done we'll start the game loop
       this.loadTextures()
         .then(() => {
+          this.map = new RaycasterMap(this.mapSize, this.textures);
+          this.renderer2d = new RaycasterRenderer2D(this.map, this.canvas, this.rays);
+          this.renderer3d = new RaycasterRenderer3D(
+            this.map,
+            this.canvas,
+            this.rays,
+            this.textures,
+          );
           resolve();
         })
         .catch(() => {
@@ -93,9 +98,17 @@ export class RaycasterComponent {
   private loadTextures(): Promise<void> {
     return new Promise((resolve, reject) => {
       Promise.all([
-        this.textures.loadWallTexture('/textures/walls/texture_wall_lit.png', 64, 64),
-        this.textures.loadFloorTexture('/textures/floors/texture_floor_tile.png', 64, 64),
-        this.textures.loadFloorTexture('/textures/floors/texture_floor_grass.png', 64, 64),
+        this.textures.loadTexture('wolfwall', '/textures/walls/texture_wall_lit.png', 64, 64),
+        this.textures.loadTexture('wolfwood1', '/textures/walls/wolfwood1.png', 64, 64),
+        this.textures.loadTexture('wolfwood2', '/textures/walls/wolfwood2.png', 64, 64),
+        this.textures.loadTexture('wolfwood3', '/textures/walls/wolfwood3.png', 64, 64),
+        this.textures.loadTexture('wolfwood4', '/textures/walls/wolfwood4.png', 64, 64),
+        this.textures.loadTexture('wolfwood5', '/textures/walls/wolfwood5.png', 64, 64),
+        this.textures.loadTexture('wolfdoor', '/textures/walls/door.png', 64, 64),
+        this.textures.loadTexture('wolfdoorside', '/textures/walls/door_side.png', 64, 64),
+        this.textures.loadTexture('tilefloor', '/textures/floors/texture_floor_tile.png', 64, 64),
+        this.textures.loadTexture('grassfloor', '/textures/floors/texture_floor_grass.png', 64, 64),
+        this.textures.loadTexture('light', '/textures/sprites/light.png', 64, 64),
       ])
         .then(() => {
           resolve();
@@ -214,7 +227,6 @@ export class RaycasterComponent {
 
     this.playerR += turnSpeed * 0.0025 * this.timeDelta;
     this.playerV = -this.mouseY;
-    // this.playerZ = (0.2 * -this.mouseY + 1.0) / 2.0;
 
     if (forwardSpeed !== 0) {
       this.movePlayer(forwardSpeed);
@@ -223,12 +235,8 @@ export class RaycasterComponent {
 
   // Use the rays to figure out how far the player should move
   private movePlayer(forwardSpeed: number) {
-    /* this.playerX += Math.cos(this.playerR) * forwardSpeed * 0.0025 * this.timeDelta;
-    this.playerY += Math.sin(this.playerR) * forwardSpeed * 0.0025 * this.timeDelta; */
-
     // get collision data
     let collisionMap = this.map.buildCollisionMap(this.playerX, this.playerY);
-    let collisionSize = collisionMap.length;
     let collisionMapScale = 4;
 
     // Fire a ray into this using this player position in the ray

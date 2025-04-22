@@ -79,6 +79,7 @@ export class RaycasterRenderer2D {
     // one for each column of the canvas
     let screenRays = this.rays.getScreenRayVectors(
       this.canvas.aspectRatio,
+      this.canvas.projectionLength,
       this.canvas.width,
       this.canvas.height,
       playerR,

@@ -1,5 +1,3 @@
-import { mod } from './raycaster-math';
-
 export class RaycasterCanvas {
   width: number;
   height: number;
@@ -7,6 +5,7 @@ export class RaycasterCanvas {
   realWidth!: number;
   realHeight!: number;
   aspectRatio!: number;
+  projectionLength: number;
 
   // Store all the canvas data, so we can give it to the renderers and have them able to use it
   element!: HTMLCanvasElement;
@@ -18,6 +17,7 @@ export class RaycasterCanvas {
     this.width = canvasElement.width;
     this.height = canvasElement.height;
     this.dataAspectRatio = (1.0 * this.width) / this.height;
+    this.projectionLength = 0.8;
 
     if (canvasElement) {
       const canvasContext = canvasElement.getContext('2d', { willReadFrequently: true });
@@ -80,13 +80,9 @@ export class RaycasterCanvas {
     y: number,
     width = this.element.width,
     height = this.element.height,
-    wrap = false,
   ) => {
-    if (wrap) {
-      // first wrap the x and y coords to the width/height
-      x = mod(x, width);
-      y = mod(y, height);
-    }
+    x = Math.min(width - 1, Math.max(0, x));
+    y = Math.min(height - 1, Math.max(0, y));
     const red = y * (width * 4) + x * 4;
     // return R G B A
     return { red: red, green: red + 1, blue: red + 2, alpha: red + 3 };
