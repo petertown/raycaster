@@ -14,10 +14,10 @@ export class RaycasterRenderer2D {
   canvas: RaycasterCanvas;
   rays: RaycasterRays;
 
-  drawVisible = false;
+  drawVisible = false; // single line for where we lookin
   drawCollision = false;
-  drawLights = false;
-  drawCone = false;
+  drawLights = true;
+  drawCone = true;
 
   backgroundColour = '#00000099';
   blockColour = '#cccccc';
@@ -46,7 +46,9 @@ export class RaycasterRenderer2D {
     // Draw the entire map, just the blocks that are walls
     this.drawBlocks(drawArea);
 
-    this.drawCollisionRays(playerX, playerY, playerR, drawArea);
+    if (this.drawCollision) {
+      this.drawCollisionRays(playerX, playerY, playerR, drawArea);
+    }
 
     // Draw player field of view
     if (this.drawCone) {

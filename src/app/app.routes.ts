@@ -4,11 +4,11 @@ import { RaycasterComponent } from '../features/raycaster/raycaster.component';
 
 export const routes: Routes = [
   {
-    path: 'v2',
-    component: RaycasterComponent,
+    path: 'v1',
+    component: OrthagonalComponent,
   },
   {
     path: '**',
-    component: OrthagonalComponent,
+    component: RaycasterComponent,
   },
 ];

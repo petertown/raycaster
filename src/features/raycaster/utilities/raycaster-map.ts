@@ -9,6 +9,7 @@ export enum BlockType {
 export interface Block {
   type: BlockType;
   // textures for wall OR textures for the walls around (As in, if it were the last block hit before the next block)
+  wallTexture: number; // index of wall texture
   // textures for the half wall
   open: number; // How open is the half wall - from -1 to 1 (So which side does it slide to)
 }
@@ -58,6 +59,7 @@ export class RaycasterMap {
         row.push({
           type: BlockType.Empty,
           open: 0.0,
+          wallTexture: 0,
         });
       }
       collisionData.push(row);
@@ -72,10 +74,18 @@ export class RaycasterMap {
         let coordY = y + mapY;
 
         let solid = false;
+        let extend = 0;
         if (coordX < 0 || coordX >= this.mapSize || coordY < 0 || coordY >= this.mapSize) {
           solid = true;
         } else {
-          solid = this.mapData[coordX][coordY].type === BlockType.Wall;
+          let blockType = this.mapData[coordX][coordY].type;
+          if (blockType === BlockType.Wall) {
+            solid = true;
+            extend = 1;
+          } else if (blockType === BlockType.XWall || blockType === BlockType.YWall) {
+            solid = true;
+            extend = 0;
+          }
         }
 
         if (solid) {
@@ -84,8 +94,8 @@ export class RaycasterMap {
           let colY = (y + 1) * collisionScale;
 
           // We want to set the points that map to it to true, plus one point around it
-          for (let xc = colX - 1; xc < colX + 1 + collisionScale; xc++) {
-            for (let yc = colY - 1; yc < colY + 1 + collisionScale; yc++) {
+          for (let xc = colX - extend; xc < colX + extend + collisionScale; xc++) {
+            for (let yc = colY - extend; yc < colY + extend + collisionScale; yc++) {
               if (xc >= 0 && xc < collisionSize && yc >= 0 && yc < collisionSize) {
                 collisionData[xc][yc].type = BlockType.Wall;
               }
@@ -106,8 +116,8 @@ export class RaycasterMap {
       let lightX = 0;
       let lightY = 0;
       while (clash) {
-        lightX = Math.floor(Math.random() * this.mapSize);
-        lightY = Math.floor(Math.random() * this.mapSize);
+        lightX = Math.floor(Math.random() * (this.mapSize - 1));
+        lightY = Math.floor(Math.random() * (this.mapSize - 1));
         if (this.mapData[lightX][lightY].type === BlockType.Empty) {
           clash = false;
         }
@@ -118,12 +128,12 @@ export class RaycasterMap {
       }
 
       this.lights.push({
-        x: lightX + 0.5,
-        y: lightY + 0.5,
-        red: Math.floor(255 * Math.random()),
-        green: Math.floor(255 * Math.random()),
-        blue: Math.floor(255 * Math.random()),
-        radius: Math.random() * 7 + 1,
+        x: lightX + 0.4 + Math.random() * 0.2,
+        y: lightY + 0.4 + Math.random() * 0.2,
+        red: Math.random(),
+        green: Math.random(),
+        blue: Math.random(),
+        radius: Math.random() * 5 + 5,
       });
     }
   }
@@ -154,7 +164,7 @@ export class RaycasterMap {
         if (distance < 3) {
           type = BlockType.Empty;
           if (Math.abs(x - halfSize) === 2 && Math.abs(y - halfSize) === 0) {
-            type = BlockType.YWall;
+            type = x - halfSize === 2 ? BlockType.YWall : BlockType.Empty;
           } else if (Math.abs(x - halfSize) === 0 && Math.abs(y - halfSize) === 2) {
             type = BlockType.XWall;
           } else if (Math.abs(x - halfSize) === 2 || Math.abs(y - halfSize) === 2) {
@@ -165,6 +175,7 @@ export class RaycasterMap {
         let newBlock: Block = {
           type: type,
           open: 0.0,
+          wallTexture: 0,
         };
 
         row.push(newBlock);

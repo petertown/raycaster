@@ -21,15 +21,8 @@ export class RaycasterComponent {
   canvas!: RaycasterCanvas;
 
   // Game settings
-  mapSize = 16;
+  mapSize = 32;
   drawMap = false;
-
-  // Real size of screen (for aspect ratio calculations)
-  renderWidth = 640;
-  renderHeight = 400;
-  displayWidth = 640;
-  displayHeight = 480;
-  displayRatio = 640.0 / 480.0;
 
   // Player position
   playerX = this.mapSize / 2.0;
@@ -63,7 +56,7 @@ export class RaycasterComponent {
   timeDelta = 0;
   timeLast = new Date().getTime();
   timeRate = 0;
-  timeMin = 13; // 33 for Approx 30FPS, 15 for about 60, 13 for 75
+  timeMin = 26; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
   stillDrawing = false;
 
   constructor() {}
@@ -77,22 +70,39 @@ export class RaycasterComponent {
 
   private initGame(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const timeStart = new Date().getTime();
-
       this.canvas = new RaycasterCanvas();
       this.map = new RaycasterMap(this.mapSize);
-      this.rays = new RaycasterRays(this.map);
-      this.renderer2d = new RaycasterRenderer2D(this.map, this.canvas, this.rays);
-      this.renderer3d = new RaycasterRenderer3D(this.map, this.canvas, this.rays);
+      this.rays = new RaycasterRays();
       this.textures = new RaycasterTextures();
+      this.renderer2d = new RaycasterRenderer2D(this.map, this.canvas, this.rays);
+      this.renderer3d = new RaycasterRenderer3D(this.map, this.canvas, this.rays, this.textures);
 
       this.initControls();
 
-      const timeEnd = new Date().getTime();
-      const timeDelta = timeEnd - timeStart;
-      console.log('init time: ' + timeDelta);
+      // Last step, load the textures in, which is async and when it's done we'll start the game loop
+      this.loadTextures()
+        .then(() => {
+          resolve();
+        })
+        .catch(() => {
+          reject();
+        });
+    });
+  }
 
-      resolve();
+  private loadTextures(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      Promise.all([
+        this.textures.loadWallTexture('/textures/walls/texture_wall_lit.png', 64, 64),
+        this.textures.loadFloorTexture('/textures/floors/texture_floor_tile.png', 64, 64),
+        this.textures.loadFloorTexture('/textures/floors/texture_floor_grass.png', 64, 64),
+      ])
+        .then(() => {
+          resolve();
+        })
+        .catch(() => {
+          reject();
+        });
     });
   }
 
@@ -201,7 +211,7 @@ export class RaycasterComponent {
 
     this.playerR += turnSpeed * 0.0025 * this.timeDelta;
     this.playerV = -this.mouseY;
-    this.playerZ = (0.2 * -this.mouseY + 1.0) / 2.0;
+    // this.playerZ = (0.2 * -this.mouseY + 1.0) / 2.0;
 
     if (forwardSpeed !== 0) {
       this.movePlayer(forwardSpeed);

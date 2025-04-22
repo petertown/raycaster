@@ -22,14 +22,8 @@ export interface RayResult {
   mapCoords: Block[];
 }
 
+// Doesn't need to be a Util now, can just be exported functions
 export class RaycasterRays {
-  // map: RaycasterMap;
-  // take the Block[][] when asking for rays to be cast anyway I htink
-
-  constructor(map: RaycasterMap) {
-    // this.map = map;
-  }
-
   public castRay(xa: number, ya: number, xd: number, yd: number, map: Block[][]): RayResult {
     // How big is this map?
     let mapSizeX = map.length;
@@ -38,8 +32,6 @@ export class RaycasterRays {
     // Which wall do we hit?
     let wallX = false; // if not this, then Y wall
     let hitEdge = false;
-
-    // now we start the hard part - go from that position until we hit a wall of some kind (or leave the map, we return the distance of 999999 I think for that)
 
     // find the distance of when the horizontal grid is hit, and the distance to the vertical grid
     // (probably 0 as we are exactly on the gridline but we need to handle that case anyway)
