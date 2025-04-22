@@ -130,6 +130,9 @@ export class RaycasterComponent {
         case 'm':
           this.drawMap = !this.drawMap;
           break;
+        case 'f':
+          this.canvas.fullscreen();
+          break;
       }
     });
 
@@ -258,7 +261,7 @@ export class RaycasterComponent {
   }
 
   private gameLogic() {
-    // Do the logic of other creatures here
-    // this.playerR += 0.001 * this.timeDelta;
+    // Do the logic of everything in here
+    // Also move the player in here maybe? Not sure
   }
 }

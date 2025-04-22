@@ -1,4 +1,4 @@
-import { mod } from "./raycaster-math";
+import { mod } from './raycaster-math';
 
 export class RaycasterCanvas {
   width: number;
@@ -14,7 +14,7 @@ export class RaycasterCanvas {
   target!: ImageData; // The image data of the canvas, only need one, can draw to same one over and over (I hope)
 
   constructor() {
-    const canvasElement = document.getElementById('orthagonal-canvas') as HTMLCanvasElement;
+    const canvasElement = document.getElementById('draw-canvas') as HTMLCanvasElement;
     this.width = canvasElement.width;
     this.height = canvasElement.height;
     this.dataAspectRatio = (1.0 * this.width) / this.height;
@@ -91,4 +91,11 @@ export class RaycasterCanvas {
     // return R G B A
     return { red: red, green: red + 1, blue: red + 2, alpha: red + 3 };
   };
+
+  fullscreen() {
+    this.element.requestFullscreen();
+    this.element.focus();
+    // Ask the browser to lock the pointer
+    this.element.requestPointerLock();
+  }
 }

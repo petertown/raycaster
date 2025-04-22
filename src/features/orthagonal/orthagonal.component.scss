@@ -1,6 +1,7 @@
 #orthagonal-canvas {
   width: 100%;
   height: calc(100vh - 65px);
+  image-rendering: pixelated;
 }
 
 .gamecontainer {
