@@ -340,18 +340,22 @@ export class RaycasterMap {
     });
   }
 
-  updateDoors(timeDelta: number) {
+  updateDoors(timeDelta: number, mapX: number, mapY: number) {
     this.doors.forEach((door) => {
       if (door.isOpen) {
         door.block.open = Math.min(1, door.block.open + this.doorSpeed * timeDelta);
-
         door.timeOpened += timeDelta;
         if (door.timeOpened > this.doorTime) {
           door.isOpen = false;
         }
-        // how long since the door was opened
       } else {
         door.block.open = Math.max(0, door.block.open - this.doorSpeed * timeDelta);
+      }
+
+      if (mapX === door.block.x && mapY === door.block.y) {
+        // If the player is in, or walks back into the door when it's closing, open it again
+        door.timeOpened = 0;
+        door.isOpen = true;
       }
     });
   }

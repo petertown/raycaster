@@ -273,7 +273,7 @@ export class RaycasterComponent {
 
   private gameLogic() {
     // Logic of doors
-    this.map.updateDoors(this.timeDelta)
+    this.map.updateDoors(this.timeDelta, Math.floor(this.playerX), Math.floor(this.playerY))
   }
 
   doAction() {
