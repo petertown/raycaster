@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { RaycasterCanvas } from './utilities/raycaster-canvas';
-import { RaycasterMap } from './utilities/raycaster-map';
+import { BlockType, RaycasterMap } from './utilities/raycaster-map';
 import { mod } from './utilities/raycaster-math';
 import { RaycasterRays, RayResult } from './utilities/raycaster-ray';
 import { RaycasterRenderer2D } from './utilities/raycaster-renderer-2d';
@@ -144,7 +144,10 @@ export class RaycasterComponent {
           this.drawMap = !this.drawMap;
           break;
         case 'f':
-          this.canvas.fullscreen();
+          this.canvas.fullscreen(); // doesn't really work
+          break;
+        case ' ': // space key
+          this.doAction();
           break;
       }
     });
@@ -269,7 +272,34 @@ export class RaycasterComponent {
   }
 
   private gameLogic() {
-    // Do the logic of everything in here
-    // Also move the player in here maybe? Not sure
+    // Logic of doors
+    this.map.updateDoors(this.timeDelta)
+  }
+
+  doAction() {
+    // find action from player position by doing a ray from the player and seeing what we hit
+    let rayX = Math.cos(this.playerR);
+    let rayY = Math.sin(this.playerR);
+    let actionResult = this.rays.castRay(this.playerX, this.playerY, rayX, rayY, this.map.mapData);
+
+    // If we got anything back - check before doing anything
+    if (actionResult.mapCoords.length > 0) {
+      // Get the last mapCoord, where our ray hit
+      let actionCoord = actionResult.mapCoords[actionResult.mapCoords.length - 1];
+      if (
+        actionResult.distance < 1.25 &&
+        (actionCoord.type === BlockType.XDoor || actionCoord.type === BlockType.YDoor)
+      ) {
+        // found a door!
+        console.log('got a door at ' + actionCoord.x + ', ' + +actionCoord.y);
+
+        // Find the door element for this one - bit messy
+        let door = this.map.getDoor(actionCoord);
+        if (door) {
+          door.timeOpened = 0;
+          door.isOpen = true;
+        }
+      }
+    }
   }
 }

@@ -74,8 +74,8 @@ export class RaycasterRenderer3D {
       if (rayResult.mapCoords.length > 1) {
         let mapCoordSecondLast = rayResult.mapCoords[rayResult.mapCoords.length - 2];
         if (
-          mapCoordSecondLast.type === BlockType.XWall ||
-          mapCoordSecondLast.type === BlockType.YWall
+          mapCoordSecondLast.type === BlockType.XDoor ||
+          mapCoordSecondLast.type === BlockType.YDoor
         ) {
           textureId = mapCoordSecondLast.innerWallTexture;
         }

@@ -3,18 +3,20 @@ import { RaycasterTextures } from './raycaster-textures';
 export enum BlockType {
   Empty, // Just a floor
   Wall, // Solid block
-  XWall, // Door in middle along X axis (to be renamed later)
-  YWall, // Door in middle along Y axis
+  XDoor, // Door in middle along X axis (to be renamed later)
+  YDoor, // Door in middle along Y axis
 }
 
 export interface Block {
+  x: number;
+  y: number;
   type: BlockType;
   // textures for wall OR textures for the walls around (As in, if it were the last block hit before the next block)
   wallTexture: number; // index of wall texture OR door texture for doors
   innerWallTexture: number; // texture used on next block if it comes from a door
   floorTexture: number; // index of texture for floor
   // textures for the half wall
-  open: number; // How open is the half wall - from -1 to 1 (So which side does it slide to)
+  open: number; // How open is the half wall - from 0 closed to 1 open
   // Perhaps a time for when it was opened, and after that time passes, it's closed and no longer passable
 }
 
@@ -37,15 +39,25 @@ export interface Sprite {
   texture: number;
 }
 
-export interface Door {}
+// door holds a link to a door Block and when it was last opened
+export interface Door {
+  block: Block;
+  timeOpened: number; // Set to 0 when it is opened, and count up the deltaTime
+  isOpen: boolean;
+}
 
 export class RaycasterMap {
+  // Make an empty map first - the entire edge is solid even bordering the sky
   // Always do [x] [y] consistently
   mapSize: number;
   mapData!: Block[][];
   lights!: Light[];
-  doors!: Door[];
   sprites!: Sprite[];
+
+  doors!: Door[];
+  doorTime = 5000; // 5 seconds
+  doorSpeed = 0.001; // this much per delta time
+  doorOpenPassable = 0.5; // How open does a door have to be to be passable
 
   textures: RaycasterTextures;
 
@@ -106,8 +118,8 @@ export class RaycasterMap {
         red: 0.8,
         green: 1.0,
         blue: 0.8,
-        radius: 3.0,
-        castShadows: false,
+        radius: 5.0,
+        castShadows: true,
       });
     }
   }
@@ -161,6 +173,7 @@ export class RaycasterMap {
 
   private buildMap() {
     this.mapData = [];
+    this.doors = [];
     const halfSize = this.mapSize / 2;
     for (let x = 0; x < this.mapSize; x++) {
       const row: Block[] = [];
@@ -185,9 +198,9 @@ export class RaycasterMap {
         if (distance < 3) {
           type = BlockType.Empty;
           if (Math.abs(x - halfSize) === 2 && Math.abs(y - halfSize) === 0) {
-            type = x - halfSize === 2 ? BlockType.YWall : BlockType.Empty;
+            type = BlockType.YDoor;
           } else if (Math.abs(x - halfSize) === 0 && Math.abs(y - halfSize) === 2) {
-            type = BlockType.XWall;
+            type = BlockType.XDoor;
           } else if (Math.abs(x - halfSize) === 2 || Math.abs(y - halfSize) === 2) {
             type = BlockType.Wall;
           }
@@ -218,14 +231,16 @@ export class RaycasterMap {
             }
             floorTexture = wallTexture;
             break;
-          case BlockType.XWall:
-          case BlockType.YWall:
+          case BlockType.XDoor:
+          case BlockType.YDoor:
             wallTexture = this.textures.getTextureId('wolfdoor');
             innerWallTexture = this.textures.getTextureId('wolfdoorside');
             break;
         }
 
         let newBlock: Block = {
+          x: x,
+          y: y,
           type: type,
           open: 0.0,
           wallTexture: wallTexture,
@@ -233,6 +248,15 @@ export class RaycasterMap {
           innerWallTexture: innerWallTexture,
         };
         row.push(newBlock);
+
+        if (type === BlockType.XDoor || type === BlockType.YDoor) {
+          // As we are making a door, make a link to this block in the "doors" array
+          this.doors.push({
+            block: newBlock,
+            timeOpened: 0,
+            isOpen: false,
+          });
+        }
       }
       this.mapData.push(row);
     }
@@ -254,6 +278,8 @@ export class RaycasterMap {
       const row: Block[] = [];
       for (let y = 0; y < collisionSize; y++) {
         row.push({
+          x: x,
+          y: y,
           type: BlockType.Empty,
           open: 0.0,
           wallTexture: 0,
@@ -278,11 +304,11 @@ export class RaycasterMap {
         if (coordX < 0 || coordX >= this.mapSize || coordY < 0 || coordY >= this.mapSize) {
           solid = true;
         } else {
-          let blockType = this.mapData[coordX][coordY].type;
+          let block = this.mapData[coordX][coordY];
           if (
-            blockType === BlockType.Wall ||
-            blockType === BlockType.XWall ||
-            blockType === BlockType.YWall
+            block.type === BlockType.Wall ||
+            ((block.type === BlockType.XDoor || block.type === BlockType.YDoor) &&
+              block.open < this.doorOpenPassable)
           ) {
             solid = true;
           }
@@ -305,5 +331,28 @@ export class RaycasterMap {
       }
     }
     return collisionData;
+  }
+
+  // Get the door that holds that block
+  getDoor(actionCoord: Block) {
+    return this.doors.find((door) => {
+      return door.block === actionCoord;
+    });
+  }
+
+  updateDoors(timeDelta: number) {
+    this.doors.forEach((door) => {
+      if (door.isOpen) {
+        door.block.open = Math.min(1, door.block.open + this.doorSpeed * timeDelta);
+
+        door.timeOpened += timeDelta;
+        if (door.timeOpened > this.doorTime) {
+          door.isOpen = false;
+        }
+        // how long since the door was opened
+      } else {
+        door.block.open = Math.max(0, door.block.open - this.doorSpeed * timeDelta);
+      }
+    });
   }
 }

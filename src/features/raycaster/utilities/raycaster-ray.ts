@@ -98,7 +98,7 @@ export class RaycasterRays {
       // First check if there is a half wall in the mapCoord we are currently testing
       // offset the gap to be slightly closer to player so shadows work
       let wallOffset = 0.01;
-      if (currentBlock.type === BlockType.XWall) {
+      if (currentBlock.type === BlockType.XDoor) {
         // Halfwall X (so along X axis so Y is always the same)
         let startX = xa;
         let startY = ya;
@@ -106,7 +106,7 @@ export class RaycasterRays {
         let vectY = yd;
 
         let wallY = blockY + 0.5 + (changeY > 0 ? -wallOffset : wallOffset); // offset the wall so shadows work
-        let wallX1 = blockX;
+        let wallX1 = blockX + currentBlock.open;
         let wallX2 = blockX + 1;
 
         // so when does the Y meet?
@@ -131,7 +131,7 @@ export class RaycasterRays {
             mapCoords: mapCoords,
           };
         }
-      } else if (currentBlock.type === BlockType.YWall) {
+      } else if (currentBlock.type === BlockType.YDoor) {
         // Halfwall Y (so along Y axis so X is always the same)
         let startX = xa;
         let startY = ya;
@@ -139,7 +139,7 @@ export class RaycasterRays {
         let vectY = yd;
 
         let wallX = blockX + 0.5 + (changeX > 0 ? -wallOffset : wallOffset); // offset for shadows
-        let wallY1 = blockY;
+        let wallY1 = blockY + currentBlock.open;
         let wallY2 = blockY + 1;
 
         // so when does the X meet?

@@ -332,11 +332,11 @@ export class RaycasterRenderer2D {
           let topLeft = this.getMapDrawPosition(x, y, drawArea);
           this.canvas.context.fillRect(topLeft.x, topLeft.y, blockSize.x, blockSize.y);
           this.canvas.context.stroke();
-        } else if (block.type === BlockType.XWall) {
+        } else if (block.type === BlockType.XDoor) {
           let left = this.getMapDrawPosition(x, y + 0.5, drawArea);
           let right = this.getMapDrawPosition(x + 1.0, y + 0.5, drawArea);
           this.drawLine(left, right, mapColour);
-        } else if (block.type === BlockType.YWall) {
+        } else if (block.type === BlockType.YDoor) {
           let left = this.getMapDrawPosition(x + 0.5, y, drawArea);
           let right = this.getMapDrawPosition(x + 0.5, y + 1.0, drawArea);
           this.drawLine(left, right, mapColour);
