@@ -15,6 +15,9 @@ export class RaycasterRenderer3D {
   ambientGreen = 0.5;
   ambientBlue = 0.5;
 
+  // render targets and data
+  depthList: number[];
+
   constructor(
     map: RaycasterMap,
     canvas: RaycasterCanvas,
@@ -25,6 +28,12 @@ export class RaycasterRenderer3D {
     this.canvas = canvas;
     this.rays = rays;
     this.textures = textures;
+
+    // make depth list to be used later - the size of the width of the canvas in pixels
+    this.depthList = [];
+    for (let i = 0; i < this.canvas.width; i++) {
+      this.depthList.push(0);
+    }
   }
 
   public drawScene(
@@ -45,7 +54,11 @@ export class RaycasterRenderer3D {
 
     const verticalSlide = this.verticalLookMax * playerV;
     let target = this.canvas.target;
-    let depthList: number[] = [];
+
+    // instead of doing this ... make a loop that makes a bunch of rays, and then cast each ray as a promise
+    // Each ray will update the target individually, will see if editing that target data causes issues
+    // But this might mean I can use more threads
+
     for (let x = 0; x < this.canvas.width; x++) {
       const screenRay = screenRayList[x];
       const rayResult = this.rays.castRay(
@@ -55,7 +68,7 @@ export class RaycasterRenderer3D {
         screenRay.y,
         this.map.mapData,
       );
-      depthList.push(rayResult.distance);
+      this.depthList[x] = rayResult.distance;
 
       const drawPoints = this.getWallDrawingPoints(rayResult.distance, playerZ, verticalSlide);
 
@@ -91,7 +104,7 @@ export class RaycasterRenderer3D {
     }
 
     // draw sprites
-    this.drawSprites(playerX, playerY, playerR, playerZ, verticalSlide, depthList, target);
+    this.drawSprites(playerX, playerY, playerR, playerZ, verticalSlide, target);
   }
 
   private drawSky(
@@ -275,7 +288,6 @@ export class RaycasterRenderer3D {
     playerR: number,
     playerZ: number,
     verticalSlide: number,
-    depthList: number[],
     target: ImageData,
   ) {
     // order them all by distance (Distance squared)
@@ -338,7 +350,7 @@ export class RaycasterRenderer3D {
 
         for (let x = drawLeftX; x < drawRightX; x++) {
           //console.log(depthList[x] + ' - ' + rayDistance);
-          if (depthList[x] > rayDistance) {
+          if (this.depthList[x] > rayDistance) {
             // only draw if the depth of the main walls is greater than this one
             let canvasIndice = this.canvas.getColorIndicesForCoord(
               Math.round(x),
