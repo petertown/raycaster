@@ -58,7 +58,6 @@ export class RaycasterComponent {
   timeDelta = 0;
   timeNow = 0;
   timeLast = new Date().getTime();
-  timeRate = 0;
   timeMin = 13; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
   stillDrawing = false;
   frameTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // last ten frames time
@@ -70,12 +69,7 @@ export class RaycasterComponent {
   ngAfterViewInit(): void {
     this.initGame().then(() => {
       // now that it's loaded, we can make a repeated event to keep triggering
-
-      // This doesn't quite work, as the renderLoop overwhelms javascript quite a bit
-      // But it's all on the one thread and definitely slows down updating the DOM
-      // Which means while it's definitely got the image ready, it doesn't display it smoothly
       setInterval(this.renderLoop, 1);
-      setInterval(this.swapLoop, this.timeMin);
     });
   }
 
@@ -111,20 +105,33 @@ export class RaycasterComponent {
               // Swap to the other render target, so we can start drawing there
               this.canvas.finishDraw(data.target);
 
+              this.canvas.screenDraw();
+
               // Draw map on top of anything drawn
               if (this.drawMap) {
                 this.renderer2d.drawMap(this.playerX, this.playerY, this.playerR);
               }
 
+              // draw FPS
+              this.canvas.context.fillStyle = 'white';
+              this.canvas.context.font = '10px Arial';
+              this.canvas.context.fillText('MS: ' + this.frameRate, 2, 10);
+              this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
+              this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
+              this.canvas.context.fillText(
+                'RPP: ' + this.raysCast / (this.canvas.width * this.canvas.height),
+                2,
+                40,
+              );
+
               const endRenderTime = new Date().getTime();
-              const renderTime = endRenderTime - this.timeNow;
+              const renderTime = endRenderTime - this.timeLast;
 
               // average all last 10 frames time
               this.frameRate =
                 this.frameTimes.reduce((previousValue: number, currentValue: number) => {
                   return previousValue + currentValue;
                 }, 0) / 10.0;
-              // console.log(1000.0 / avgTime);
               this.frameTimes.shift(); // remove oldest time
               this.frameTimes.push(renderTime); // push newest time
 
@@ -231,18 +238,12 @@ export class RaycasterComponent {
       // time since last frame (delta time)
       this.timeDelta = timeDelta;
       this.timeLast = this.timeNow;
-      this.timeRate = Math.floor(1000.0 / this.timeDelta);
 
       this.handleInput();
       this.gameLogic();
 
       // Start drawing
       this.canvas.startDraw(); // fix canvas size and ratio
-      this.renderer3d.updateRenderTarget(
-        this.canvas.aspectRatio,
-        this.canvas.projectionLength,
-        this.canvas.getTarget(),
-      );
 
       // Send the worker off to do the drawing
       this.worker.postMessage({
@@ -260,22 +261,6 @@ export class RaycasterComponent {
         renderHeight: this.canvas.height,
       });
     }
-  };
-
-  private readonly swapLoop = () => {
-    this.canvas.screenDraw();
-
-    // draw FPS
-    this.canvas.context.fillStyle = 'white';
-    this.canvas.context.font = '10px Arial';
-    this.canvas.context.fillText('MS: ' + this.frameRate, 2, 10);
-    this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
-    this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
-    this.canvas.context.fillText(
-      'RPP: ' + this.raysCast / (this.canvas.width * this.canvas.height),
-      2,
-      40,
-    );
   };
 
   handleInput() {

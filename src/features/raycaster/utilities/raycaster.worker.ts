@@ -1,10 +1,10 @@
 /// <reference lib="webworker" />
-import { RaycasterCanvas } from './raycaster-canvas';
 import { Block, BlockType, RaycasterMap, Sprite } from './raycaster-map';
 import { rotateVectorDirection } from './raycaster-math';
-import { Direction, RaycasterRays, RayResult } from './raycaster-ray';
+import { Direction, RayResult } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
+// Can move a lot of stuff from function params into here, but not sure how good that is
 let raysCast = 0;
 let ambientRed = 1.0;
 let ambientGreen = 1.0;
@@ -12,8 +12,6 @@ let ambientBlue = 1.0;
 let depthList: number[];
 
 addEventListener('message', ({ data }) => {
-  const whatWeGot = data;
-
   // reset rays cast TEMP
   raysCast = 0;
 
@@ -132,7 +130,7 @@ addEventListener('message', ({ data }) => {
   );
 
   // how many rays did we cast? Return it so that we can display those stats
-  postMessage({raysCast: raysCast, target: data.target});
+  postMessage({ raysCast: raysCast, target: data.target });
 });
 
 function drawSky(
@@ -200,8 +198,15 @@ function drawWall(
       // testing the distance squared is less than the desired distance squared before casting rays!
 
       let lightHit =
-        !light.castShadows ||
         Math.pow(light.mapX - lastMapCoord.x, 2) + Math.pow(light.mapY - lastMapCoord.y, 2) <= 1;
+
+      if (
+        !light.castShadows ||
+        lastMapCoord.type === BlockType.XDoor ||
+        lastMapCoord.type === BlockType.YDoor
+      ) {
+        lightHit = false;
+      }
 
       if (!lightHit) {
         lightHit = castRay(xa, ya, xd, yd, map.mapData).distance >= 0.999;
@@ -289,9 +294,16 @@ function drawFloor(
 
         // Also if we are in the same square as the light source, or adjacent to it, we don't need to cast any rays!
         // get a dist squared of the mapX/Y coords - If 1 or less then we don't bother doing shadows
-        let lightHit =
+
+        let lightHit = Math.pow(light.mapX - mapX, 2) + Math.pow(light.mapY - mapY, 2) <= 1;
+
+        if (
           !light.castShadows ||
-          Math.pow(light.mapX - mapX, 2) + Math.pow(light.mapY - mapY, 2) <= 1;
+          mapSection.type === BlockType.XDoor ||
+          mapSection.type === BlockType.YDoor
+        ) {
+          lightHit = false;
+        }
 
         if (!lightHit) {
           lightHit = castRay(xa, ya, xd, yd, map.mapData).distance >= 0.999;

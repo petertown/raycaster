@@ -238,7 +238,7 @@ export class RaycasterMap {
 
   createSprites() {
     // just make a bunch of lamps for now
-    let spriteCount = 10;
+    let spriteCount = 5;
     this.sprites = [];
     for (let spriteIdx = 0; spriteIdx < spriteCount; spriteIdx++) {
       let clash = true;
