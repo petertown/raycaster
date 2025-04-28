@@ -38,6 +38,8 @@ export class RaycasterComponent {
   keydown = false;
   keyleft = false;
   keyright = false;
+  keystrafeleft = false;
+  keystraferight = false;
 
   // Components
   // Rendering target
@@ -196,6 +198,12 @@ export class RaycasterComponent {
         case 'd':
           this.keyright = true;
           break;
+        case 'q':
+          this.keystrafeleft = true;
+          break;
+        case 'e':
+          this.keystraferight = true;
+          break;
         case 'm':
           this.drawMap = !this.drawMap;
           break;
@@ -221,6 +229,12 @@ export class RaycasterComponent {
           break;
         case 'd':
           this.keyright = false;
+          break;
+        case 'q':
+          this.keystrafeleft = false;
+          break;
+        case 'e':
+          this.keystraferight = false;
           break;
       }
     });
@@ -267,6 +281,7 @@ export class RaycasterComponent {
     // Keyboard movement
     let forwardSpeed = 0;
     let turnSpeed = 0;
+    let strafeSpeed = 0;
     if (this.keyup) {
       forwardSpeed += 1;
     }
@@ -279,26 +294,43 @@ export class RaycasterComponent {
     if (this.keyleft) {
       turnSpeed -= 1;
     }
+    if (this.keystrafeleft) {
+      strafeSpeed -= 1;
+    }
+    if (this.keystraferight) {
+      strafeSpeed += 1;
+    }
 
     this.playerR += turnSpeed * 0.0025 * this.timeDelta;
     this.playerV = -this.mouseY;
 
-    if (forwardSpeed !== 0) {
-      this.movePlayer(forwardSpeed);
+    if (forwardSpeed !== 0 || strafeSpeed !== 0) {
+      this.movePlayer(forwardSpeed, strafeSpeed);
     }
   }
 
   // Use the rays to figure out how far the player should move
-  private movePlayer(forwardSpeed: number) {
+  private movePlayer(forwardSpeed: number, strafeSpeed: number) {
     // get collision data
-    let collisionMap = this.map.buildCollisionMap(this.playerX, this.playerY);
-    let collisionMapScale = 4;
+    const collisionMap = this.map.buildCollisionMap(this.playerX, this.playerY);
+    const collisionMapScale = 4;
 
     // Fire a ray into this using this player position in the ray
     // But move them back a bit so we don't just go through corners... geez!
-    let movementAmount = this.timeDelta * forwardSpeed * 0.0025;
-    let rayX = Math.cos(this.playerR) * movementAmount * collisionMapScale;
-    let rayY = Math.sin(this.playerR) * movementAmount * collisionMapScale;
+    const forwardAmount = forwardSpeed;
+    const strafeAmount = strafeSpeed;
+
+    // Make a ray that's a normalised length
+    let rayX =
+      (Math.cos(this.playerR) * forwardAmount +
+        Math.cos(this.playerR + Math.PI / 2.0) * strafeAmount);
+    let rayY =
+      (Math.sin(this.playerR) * forwardAmount +
+        Math.sin(this.playerR + Math.PI / 2.0) * strafeAmount);
+    const rayLength = Math.sqrt(rayX * rayX + rayY * rayY);
+    rayX = this.timeDelta * (rayX / rayLength) * 0.0025 * collisionMapScale;
+    rayY = this.timeDelta * (rayY / rayLength) * 0.0025 * collisionMapScale;
+
     let colX = collisionMapScale * (1 + mod(this.playerX, 1));
     let colY = collisionMapScale * (1 + mod(this.playerY, 1));
 
