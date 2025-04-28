@@ -4,9 +4,9 @@ import { rotateVectorDirection } from './raycaster-math';
 import { RaycasterRays, RayResult } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
+// We aren't using this anymore! We're using the web worker to make it threaded
 export class RaycasterRenderer3D {
   map: RaycasterMap;
-  canvas: RaycasterCanvas;
   rays: RaycasterRays;
   textures: RaycasterTextures;
 
@@ -16,25 +16,39 @@ export class RaycasterRenderer3D {
   ambientBlue = 1.0;
   doLighting = false;
 
+  renderWidth: number;
+  renderHeight: number;
+  aspectRatio = 1.0; // calculate every frame
+  projectionLength = 1.0;
+  target!: ImageData;
+
   // render targets and data
   depthList: number[];
 
   constructor(
     map: RaycasterMap,
-    canvas: RaycasterCanvas,
     rays: RaycasterRays,
     textures: RaycasterTextures,
+    renderWidth: number,
+    renderHeight: number,
   ) {
     this.map = map;
-    this.canvas = canvas;
     this.rays = rays;
     this.textures = textures;
+    this.renderWidth = renderWidth;
+    this.renderHeight = renderHeight;
 
     // make depth list to be used later - the size of the width of the canvas in pixels
     this.depthList = [];
-    for (let i = 0; i < this.canvas.width; i++) {
+    for (let i = 0; i < this.renderWidth; i++) {
       this.depthList.push(0);
     }
+  }
+
+  public updateRenderTarget(aspectRatio: number, projectionLength: number, target: ImageData) {
+    this.aspectRatio = aspectRatio;
+    this.projectionLength = projectionLength;
+    this.target = target;
   }
 
   public drawScene(
@@ -49,21 +63,19 @@ export class RaycasterRenderer3D {
 
     // A list of rays for drawing
     const screenRayList = this.rays.getScreenRayVectors(
-      this.canvas.aspectRatio,
-      this.canvas.projectionLength,
-      this.canvas.width,
-      this.canvas.height,
+      this.aspectRatio,
+      this.projectionLength,
+      this.renderWidth,
       playerR,
     );
 
     const verticalSlide = this.verticalLookMax * playerV;
-    let target = this.canvas.getTarget();
 
     // instead of doing this ... make a loop that makes a bunch of rays, and then cast each ray as a promise
     // Each ray will update the target individually, will see if editing that target data causes issues
     // But this might mean I can use more threads
 
-    for (let x = 0; x < this.canvas.width; x++) {
+    for (let x = 0; x < this.renderWidth; x++) {
       const screenRay = screenRayList[x];
       const rayResult = this.rays.castRay(
         playerX,
@@ -80,14 +92,13 @@ export class RaycasterRenderer3D {
         drawPoints.drawStart = drawPoints.drawEnd;
       }
 
-      let canvasIndice = this.canvas.getColorIndicesForCoord(x, 0).red;
+      let canvasIndice = this.getColorIndicesForCoord(x, 0).red;
 
       // look at last mapCoord to see what texture to use
       let textureId = 0;
       let mapCoordLast = rayResult.mapCoords[rayResult.mapCoords.length - 1];
       textureId = mapCoordLast.wallTexture;
 
-      // if (rayResult.mapCoords.length > 1) {
       let mapCoordSecondLast = rayResult.mapCoords[rayResult.mapCoords.length - 2];
       if (
         mapCoordSecondLast &&
@@ -95,10 +106,9 @@ export class RaycasterRenderer3D {
       ) {
         textureId = mapCoordSecondLast.innerWallTexture;
       }
-      // }
 
       // draw the sky, wall and floor
-      canvasIndice = this.drawSky(drawPoints, verticalSlide, target, canvasIndice);
+      canvasIndice = this.drawSky(drawPoints, verticalSlide, this.target, canvasIndice);
 
       // When drawing the walls we need to update the depth list for drawing sprites later
       canvasIndice = this.drawWall(
@@ -106,7 +116,7 @@ export class RaycasterRenderer3D {
         drawPoints,
         textureId,
         mapCoordSecondLast ?? mapCoordLast,
-        target,
+        this.target,
         canvasIndice,
       );
 
@@ -117,11 +127,11 @@ export class RaycasterRenderer3D {
       // then we'll want to know the distance between the two
       // This might be faster, but probably not so good for the shadows - though we could fade out the shadows in the distance?
       // We should probably first attempt to precalculate the possibility for lights for each square, so we can avoid unnecessary checks
-      this.drawFloor(rayResult, drawPoints, playerZ, verticalSlide, target, canvasIndice);
+      this.drawFloor(rayResult, drawPoints, playerZ, verticalSlide, this.target, canvasIndice);
     }
 
     // draw sprites
-    this.drawSprites(playerX, playerY, playerR, playerZ, verticalSlide, target);
+    this.drawSprites(playerX, playerY, playerR, playerZ, verticalSlide, this.target);
 
     // how many rays did we cast? Return it so that we can display those stats
     return this.rays.raysCast;
@@ -144,12 +154,12 @@ export class RaycasterRenderer3D {
     let blue = 128;
 
     for (let y = 0; y < drawPoints.drawStart; y++) {
-      let skyPosition = (y - verticalSlide) / this.canvas.height;
+      let skyPosition = (y - verticalSlide) / this.renderHeight;
       target.data[canvasIndice] = Math.floor(red * skyPosition);
       target.data[canvasIndice + 1] = Math.floor(green * skyPosition);
       target.data[canvasIndice + 2] = Math.floor(blue * skyPosition);
 
-      canvasIndice += this.canvas.width * 4;
+      canvasIndice += this.renderWidth * 4;
     }
     return canvasIndice;
   }
@@ -210,7 +220,7 @@ export class RaycasterRenderer3D {
         wallTexture.height * ((y - drawPoints.heightStart) / drawPoints.heightDifference),
       );
 
-      const textureIndices = this.canvas.getColorIndicesForCoord(
+      const textureIndices = this.getColorIndicesForCoord(
         xTextureCoord,
         yTextureCoord,
         wallTexture.width,
@@ -222,7 +232,7 @@ export class RaycasterRenderer3D {
       );
       target.data[canvasIndice + 2] = Math.round(wallTexture.data[textureIndices.blue] * lightBlue);
 
-      canvasIndice += this.canvas.width * 4;
+      canvasIndice += this.renderWidth * 4;
     }
     return canvasIndice;
   }
@@ -245,10 +255,10 @@ export class RaycasterRenderer3D {
     let yPos: number;
     // let xPos: number;
 
-    for (let y = drawPoints.drawEnd + 1; y < this.canvas.height; y++) {
+    for (let y = drawPoints.drawEnd + 1; y < this.renderHeight; y++) {
       let yAdjusted = y + -Math.min(0, drawPoints.drawEnd);
       const floorDistance =
-        (this.canvas.height * playerZ) / (yAdjusted - verticalSlide - this.canvas.height / 2.0);
+        (this.renderHeight * playerZ) / (yAdjusted - verticalSlide - this.renderHeight / 2.0);
       xPos = rayResult.xa + rayResult.xd * floorDistance;
       yPos = rayResult.ya + rayResult.yd * floorDistance;
 
@@ -300,7 +310,7 @@ export class RaycasterRenderer3D {
       let xTextureCoord = Math.floor(xPos * floorTexture.width);
       let yTextureCoord = Math.floor(yPos * floorTexture.height);
 
-      const textureIndices = this.canvas.getColorIndicesForCoord(
+      const textureIndices = this.getColorIndicesForCoord(
         xTextureCoord,
         yTextureCoord,
         floorTexture.width,
@@ -314,7 +324,7 @@ export class RaycasterRenderer3D {
         floorTexture.data[textureIndices.blue] * lightBlue,
       );
 
-      canvasIndice += this.canvas.width * 4;
+      canvasIndice += this.renderWidth * 4;
     }
     return canvasIndice;
   }
@@ -354,29 +364,29 @@ export class RaycasterRenderer3D {
 
       // Only draw if in front of us
       if (relativePosition.x > 0) {
-        let rayDistance = relativePosition.x / this.canvas.projectionLength;
+        let rayDistance = relativePosition.x / this.projectionLength;
 
         // find the location on the ground for this point - use X as that's the direction we are facing
         let verticalPoints = this.getWallDrawingPoints(rayDistance, playerZ, verticalSlide);
 
         let spriteWidth =
-          (this.canvas.projectionLength * this.canvas.height) /
+          (this.projectionLength * this.renderHeight) /
           rayDistance /
-          this.canvas.aspectRatio; // scale the width
+          this.aspectRatio; // scale the width
         // maybe do the halving here for easeas
 
         const spriteTexture = this.textures.textureList[sprite.sprite.texture].data;
 
         let spriteX =
-          (2 * (relativePosition.y * this.canvas.projectionLength * this.canvas.height)) /
+          (2 * (relativePosition.y * this.projectionLength * this.renderHeight)) /
             rayDistance /
-            this.canvas.aspectRatio +
-          this.canvas.width / 2.0;
+            this.aspectRatio +
+          this.renderWidth / 2.0;
 
         let leftX = spriteX - spriteWidth;
         let rightX = spriteX + spriteWidth;
-        let drawLeftX = Math.floor(Math.min(this.canvas.width - 1, Math.max(0, leftX)));
-        let drawRightX = Math.floor(Math.min(this.canvas.width - 1, Math.max(0, rightX)));
+        let drawLeftX = Math.floor(Math.min(this.renderWidth - 1, Math.max(0, leftX)));
+        let drawRightX = Math.floor(Math.min(this.renderWidth - 1, Math.max(0, rightX)));
         let differenceX = rightX - leftX;
 
         // lighting? Perhaps only bother to work this out IF a single part of the sprite is visible
@@ -389,7 +399,7 @@ export class RaycasterRenderer3D {
           //console.log(depthList[x] + ' - ' + rayDistance);
           if (this.depthList[x] > rayDistance) {
             // only draw if the depth of the main walls is greater than this one
-            let canvasIndice = this.canvas.getColorIndicesForCoord(
+            let canvasIndice = this.getColorIndicesForCoord(
               Math.round(x),
               Math.round(verticalPoints.drawStart),
             ).red;
@@ -402,7 +412,7 @@ export class RaycasterRenderer3D {
                   ((y - verticalPoints.heightStart) / verticalPoints.heightDifference),
               );
 
-              const textureIndices = this.canvas.getColorIndicesForCoord(
+              const textureIndices = this.getColorIndicesForCoord(
                 xTextureCoord,
                 yTextureCoord,
                 spriteTexture.width,
@@ -426,7 +436,7 @@ export class RaycasterRenderer3D {
                 );
               }
 
-              canvasIndice += this.canvas.width * 4;
+              canvasIndice += this.renderWidth * 4;
             }
           }
         }
@@ -435,16 +445,16 @@ export class RaycasterRenderer3D {
   }
 
   private getWallDrawingPoints(distance: number, playerZ: number, verticalSlide: number) {
-    const cameraHeight = playerZ * this.canvas.height;
+    const cameraHeight = playerZ * this.renderHeight;
 
     // If we round these off, we can make the low precision Kens Labyrinth texture effect
     const heightStart =
-      verticalSlide + (-this.canvas.height + cameraHeight) / distance + this.canvas.height / 2.0;
-    const heightEnd = verticalSlide + cameraHeight / distance + this.canvas.height / 2.0;
+      verticalSlide + (-this.renderHeight + cameraHeight) / distance + this.renderHeight / 2.0;
+    const heightEnd = verticalSlide + cameraHeight / distance + this.renderHeight / 2.0;
     const heightDifference = (heightEnd - heightStart) * 1.0;
 
     const drawStart = Math.round(Math.max(0, heightStart));
-    const drawEnd = Math.round(Math.min(this.canvas.height, heightEnd));
+    const drawEnd = Math.round(Math.min(this.renderHeight, heightEnd));
 
     return {
       heightStart: heightStart,
@@ -454,4 +464,19 @@ export class RaycasterRenderer3D {
       heightDifference: heightDifference,
     };
   }
+
+  // Use this to get the colour indices for a canvas/image - also wrap this number to width and height
+  // By default it doesn't wrap and it is getting the canvas size
+  public getColorIndicesForCoord = (
+    x: number,
+    y: number,
+    width = this.renderWidth,
+    height = this.renderHeight,
+  ) => {
+    x = Math.min(width - 1, Math.max(0, x));
+    y = Math.min(height - 1, Math.max(0, y));
+    const red = y * (width * 4) + x * 4;
+    // return R G B A
+    return { red: red, green: red + 1, blue: red + 2, alpha: red + 3 };
+  };
 }

@@ -51,12 +51,15 @@ export class RaycasterComponent {
   rays!: RaycasterRays;
   // Texture utility
   textures!: RaycasterTextures;
+  // Web worker to offload to another thread
+  private worker!: Worker;
 
   // Timing
   timeDelta = 0;
+  timeNow = 0;
   timeLast = new Date().getTime();
   timeRate = 0;
-  timeMin = 33; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
+  timeMin = 13; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
   stillDrawing = false;
   frameTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // last ten frames time
   frameRate = 0;
@@ -91,10 +94,48 @@ export class RaycasterComponent {
           this.renderer2d = new RaycasterRenderer2D(this.map, this.canvas, this.rays);
           this.renderer3d = new RaycasterRenderer3D(
             this.map,
-            this.canvas,
             this.rays,
             this.textures,
+            this.canvas.width,
+            this.canvas.height,
           );
+
+          if (typeof Worker !== 'undefined') {
+            // Create a new
+            this.worker = new Worker(new URL('./utilities/raycaster.worker', import.meta.url));
+
+            this.worker.onmessage = ({ data }) => {
+              // data is {raysCast: number, target: ImageData}
+              this.raysCast = data.raysCast;
+
+              // Swap to the other render target, so we can start drawing there
+              this.canvas.finishDraw(data.target);
+
+              // Draw map on top of anything drawn
+              if (this.drawMap) {
+                this.renderer2d.drawMap(this.playerX, this.playerY, this.playerR);
+              }
+
+              const endRenderTime = new Date().getTime();
+              const renderTime = endRenderTime - this.timeNow;
+
+              // average all last 10 frames time
+              this.frameRate =
+                this.frameTimes.reduce((previousValue: number, currentValue: number) => {
+                  return previousValue + currentValue;
+                }, 0) / 10.0;
+              // console.log(1000.0 / avgTime);
+              this.frameTimes.shift(); // remove oldest time
+              this.frameTimes.push(renderTime); // push newest time
+
+              this.stillDrawing = false;
+            };
+          } else {
+            // Web Workers are not supported in this environment.
+            // You should add a fallback so that your program still executes correctly.
+            // So we could keep the old methods and use that loop instead of the new loop for a fallback?
+          }
+
           resolve();
         })
         .catch(() => {
@@ -178,18 +219,18 @@ export class RaycasterComponent {
     });
   }
 
-  private renderLoop = () => {
+  private readonly renderLoop = () => {
     // current time
-    const timeNow = new Date().getTime();
+    this.timeNow = new Date().getTime();
 
     // cap framerate and don't start drawing until the last is done
-    const timeDelta = timeNow - this.timeLast;
+    const timeDelta = this.timeNow - this.timeLast;
     if (!this.stillDrawing && timeDelta >= this.timeMin) {
       this.stillDrawing = true;
 
       // time since last frame (delta time)
       this.timeDelta = timeDelta;
-      this.timeLast = timeNow;
+      this.timeLast = this.timeNow;
       this.timeRate = Math.floor(1000.0 / this.timeDelta);
 
       this.handleInput();
@@ -197,41 +238,31 @@ export class RaycasterComponent {
 
       // Start drawing
       this.canvas.startDraw(); // fix canvas size and ratio
-
-      // Render 3d scene
-      this.raysCast = this.renderer3d.drawScene(
-        this.playerX,
-        this.playerY,
-        this.playerZ,
-        this.playerR,
-        this.playerV,
+      this.renderer3d.updateRenderTarget(
+        this.canvas.aspectRatio,
+        this.canvas.projectionLength,
+        this.canvas.getTarget(),
       );
 
-      // Swap to the other render target, so we can start drawing there
-      this.canvas.finishDraw();
-
-      // Draw map on top of anything drawn
-      if (this.drawMap) {
-        this.renderer2d.drawMap(this.playerX, this.playerY, this.playerR);
-      }
-
-      const endRenderTime = new Date().getTime();
-      const renderTime = endRenderTime - timeNow;
-
-      // average all last 10 frames time
-      this.frameRate =
-        this.frameTimes.reduce((previousValue: number, currentValue: number) => {
-          return previousValue + currentValue;
-        }, 0) / 10.0;
-      // console.log(1000.0 / avgTime);
-      this.frameTimes.shift(); // remove oldest time
-      this.frameTimes.push(renderTime); // push newest time
-
-      this.stillDrawing = false;
+      // Send the worker off to do the drawing
+      this.worker.postMessage({
+        map: this.map,
+        textures: this.textures,
+        target: this.canvas.getTarget(),
+        playerX: this.playerX,
+        playerY: this.playerY,
+        playerZ: this.playerZ,
+        playerR: this.playerR,
+        playerV: this.playerV,
+        aspectRatio: this.canvas.aspectRatio,
+        projectionLength: this.canvas.projectionLength,
+        renderWidth: this.canvas.width,
+        renderHeight: this.canvas.height,
+      });
     }
   };
 
-  private swapLoop = () => {
+  private readonly swapLoop = () => {
     this.canvas.screenDraw();
 
     // draw FPS

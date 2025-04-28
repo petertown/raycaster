@@ -14,6 +14,7 @@ export class RaycasterCanvas {
   targetACurrent = true; // true if we are drawing to targetA, false if we are drawing to targetB
   targetA!: ImageData; // The image data of the canvas, only need one, can draw to same one over and over (I hope)
   targetB!: ImageData; // another target, so we can do triple buffering! worth a shot
+  newImageReady = false;
 
   constructor() {
     const canvasElement = document.getElementById('draw-canvas') as HTMLCanvasElement;
@@ -81,33 +82,26 @@ export class RaycasterCanvas {
   }
 
   // Call at end to put the render target on the canvas
-  public finishDraw() {
+  public finishDraw(updatedTarget: ImageData) {
+    if (this.targetACurrent) {
+      this.targetA = updatedTarget;
+    } else {
+      this.targetB = updatedTarget;
+    }
     this.targetACurrent = !this.targetACurrent;
+    this.newImageReady = true;
   }
 
   // draw the canvas that's not being drawn to right now
   public screenDraw() {
-    if (this.targetACurrent) {
-      this.context.putImageData(this.targetB, 0, 0);
-    } else {
-      this.context.putImageData(this.targetA, 0, 0);
+    if (this.newImageReady) {
+      if (this.targetACurrent) {
+        this.context.putImageData(this.targetB, 0, 0);
+      } else {
+        this.context.putImageData(this.targetA, 0, 0);
+      }
     }
   }
-
-  // Use this to get the colour indices for a canvas/image - also wrap this number to width and height
-  // By default it doesn't wrap and it is getting the canvas size
-  public getColorIndicesForCoord = (
-    x: number,
-    y: number,
-    width = this.element.width,
-    height = this.element.height,
-  ) => {
-    x = Math.min(width - 1, Math.max(0, x));
-    y = Math.min(height - 1, Math.max(0, y));
-    const red = y * (width * 4) + x * 4;
-    // return R G B A
-    return { red: red, green: red + 1, blue: red + 2, alpha: red + 3 };
-  };
 
   fullscreen() {
     this.element.requestFullscreen();

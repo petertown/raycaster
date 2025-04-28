@@ -81,7 +81,6 @@ export class RaycasterRenderer2D {
       this.canvas.aspectRatio,
       this.canvas.projectionLength,
       this.canvas.width,
-      this.canvas.height,
       playerR,
     );
 

@@ -296,7 +296,6 @@ export class RaycasterRays {
     aspectRatio: number,
     projectionLength: number,
     width: number,
-    height: number,
     radians: number,
   ): Direction[] {
     let initialRays: Direction[] = [];
