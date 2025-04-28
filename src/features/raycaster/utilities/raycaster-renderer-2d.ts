@@ -16,7 +16,7 @@ export class RaycasterRenderer2D {
 
   drawVisible = false; // single line for where we lookin
   drawCollision = false;
-  drawLights = false;
+  drawLights = true;
   drawCone = true;
 
   backgroundColour = '#00000099';

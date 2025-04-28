@@ -1,5 +1,5 @@
 import { RaycasterCanvas } from './raycaster-canvas';
-import { BlockType, RaycasterMap, Sprite } from './raycaster-map';
+import { Block, BlockType, RaycasterMap, Sprite } from './raycaster-map';
 import { rotateVectorDirection } from './raycaster-math';
 import { RaycasterRays, RayResult } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
@@ -11,9 +11,10 @@ export class RaycasterRenderer3D {
   textures: RaycasterTextures;
 
   verticalLookMax = 200;
-  ambientRed = 0.5;
-  ambientGreen = 0.5;
-  ambientBlue = 0.5;
+  ambientRed = 1.0;
+  ambientGreen = 1.0;
+  ambientBlue = 1.0;
+  doLighting = false;
 
   // render targets and data
   depthList: number[];
@@ -43,6 +44,9 @@ export class RaycasterRenderer3D {
     playerR: number,
     playerV: number,
   ) {
+    // reset rays cast TEMP
+    this.rays.raysCast = 0;
+
     // A list of rays for drawing
     const screenRayList = this.rays.getScreenRayVectors(
       this.canvas.aspectRatio,
@@ -53,7 +57,7 @@ export class RaycasterRenderer3D {
     );
 
     const verticalSlide = this.verticalLookMax * playerV;
-    let target = this.canvas.target;
+    let target = this.canvas.getTarget();
 
     // instead of doing this ... make a loop that makes a bunch of rays, and then cast each ray as a promise
     // Each ray will update the target individually, will see if editing that target data causes issues
@@ -80,31 +84,47 @@ export class RaycasterRenderer3D {
 
       // look at last mapCoord to see what texture to use
       let textureId = 0;
-      if (rayResult.mapCoords.length > 0) {
-        let mapCoordLast = rayResult.mapCoords[rayResult.mapCoords.length - 1];
-        textureId = mapCoordLast.wallTexture;
+      let mapCoordLast = rayResult.mapCoords[rayResult.mapCoords.length - 1];
+      textureId = mapCoordLast.wallTexture;
+
+      // if (rayResult.mapCoords.length > 1) {
+      let mapCoordSecondLast = rayResult.mapCoords[rayResult.mapCoords.length - 2];
+      if (
+        mapCoordSecondLast &&
+        (mapCoordSecondLast.type === BlockType.XDoor || mapCoordSecondLast.type === BlockType.YDoor)
+      ) {
+        textureId = mapCoordSecondLast.innerWallTexture;
       }
-      if (rayResult.mapCoords.length > 1) {
-        let mapCoordSecondLast = rayResult.mapCoords[rayResult.mapCoords.length - 2];
-        if (
-          mapCoordSecondLast.type === BlockType.XDoor ||
-          mapCoordSecondLast.type === BlockType.YDoor
-        ) {
-          textureId = mapCoordSecondLast.innerWallTexture;
-        }
-      }
+      // }
 
       // draw the sky, wall and floor
       canvasIndice = this.drawSky(drawPoints, verticalSlide, target, canvasIndice);
 
       // When drawing the walls we need to update the depth list for drawing sprites later
-      canvasIndice = this.drawWall(rayResult, drawPoints, textureId, target, canvasIndice);
+      canvasIndice = this.drawWall(
+        rayResult,
+        drawPoints,
+        textureId,
+        mapCoordSecondLast ?? mapCoordLast,
+        target,
+        canvasIndice,
+      );
 
+      // TODO: We should do the floors as horizontal spans, as it's easier to calculate
+      // For the lighting, we can do the lighting calculated at specific points along the map, so we'll do the floors in spans of unbroken floors from left to right
+      // that'll be quicker than doing the ray calculations even if it's not so optimised
+      // And calculate at the start and end of the rays
+      // then we'll want to know the distance between the two
+      // This might be faster, but probably not so good for the shadows - though we could fade out the shadows in the distance?
+      // We should probably first attempt to precalculate the possibility for lights for each square, so we can avoid unnecessary checks
       this.drawFloor(rayResult, drawPoints, playerZ, verticalSlide, target, canvasIndice);
     }
 
     // draw sprites
     this.drawSprites(playerX, playerY, playerR, playerZ, verticalSlide, target);
+
+    // how many rays did we cast? Return it so that we can display those stats
+    return this.rays.raysCast;
   }
 
   private drawSky(
@@ -144,6 +164,7 @@ export class RaycasterRenderer3D {
       heightDifference: number;
     },
     textureId: number,
+    lastMapCoord: Block,
     target: ImageData,
     canvasIndice: number,
   ) {
@@ -154,7 +175,7 @@ export class RaycasterRenderer3D {
     let lightRed = this.ambientRed / (rayResult.distance + 1);
     let lightGreen = this.ambientGreen / (rayResult.distance + 1);
     let lightBlue = this.ambientBlue / (rayResult.distance + 1);
-    for (let light of this.map.lights) {
+    for (let light of lastMapCoord.lights) {
       const xd = rayResult.xHit - light.x;
       const yd = rayResult.yHit - light.y;
       const xa = light.x;
@@ -165,10 +186,15 @@ export class RaycasterRenderer3D {
       if (distance < Math.pow(light.radius, 2)) {
         // testing the distance squared is less than the desired distance squared before casting rays!
 
-        if (
+        let lightHit =
           !light.castShadows ||
-          this.rays.castRay(xa, ya, xd, yd, this.map.mapData).distance >= 0.999
-        ) {
+          Math.pow(light.mapX - lastMapCoord.x, 2) + Math.pow(light.mapY - lastMapCoord.y, 2) <= 1;
+
+        if (!lightHit) {
+          lightHit = this.rays.castRay(xa, ya, xd, yd, this.map.mapData).distance >= 0.999;
+        }
+
+        if (lightHit) {
           // We hit the ray so now we sqrt the distance */
           distance = Math.max(1.0 - Math.sqrt(distance) / light.radius, 0);
 
@@ -215,12 +241,16 @@ export class RaycasterRenderer3D {
     target: ImageData,
     canvasIndice: number,
   ) {
+    let xPos: number;
+    let yPos: number;
+    // let xPos: number;
+
     for (let y = drawPoints.drawEnd + 1; y < this.canvas.height; y++) {
       let yAdjusted = y + -Math.min(0, drawPoints.drawEnd);
       const floorDistance =
         (this.canvas.height * playerZ) / (yAdjusted - verticalSlide - this.canvas.height / 2.0);
-      let xPos = rayResult.xa + rayResult.xd * floorDistance;
-      let yPos = rayResult.ya + rayResult.yd * floorDistance;
+      xPos = rayResult.xa + rayResult.xd * floorDistance;
+      yPos = rayResult.ya + rayResult.yd * floorDistance;
 
       // Get texture
       let mapX = Math.min(this.map.mapSize - 1, Math.max(0, Math.floor(xPos)));
@@ -228,11 +258,11 @@ export class RaycasterRenderer3D {
       const mapSection = this.map.mapData[mapX][mapY];
       const floorTexture = this.textures.textureList[mapSection.floorTexture].data;
 
-      // Do light rays
+      // Do light rays - can I make this a common bit of code so it's not duplicated for walls?
       let lightRed = this.ambientRed / (floorDistance + 1);
       let lightGreen = this.ambientGreen / (floorDistance + 1);
       let lightBlue = this.ambientBlue / (floorDistance + 1);
-      for (let light of this.map.lights) {
+      for (let light of mapSection.lights) {
         const xd = xPos - light.x;
         const yd = yPos - light.y;
         const xa = light.x;
@@ -243,10 +273,17 @@ export class RaycasterRenderer3D {
         if (distance < Math.pow(light.radius, 2)) {
           // testing the distance squared is less than the desired distance squared before casting rays!
 
-          if (
+          // Also if we are in the same square as the light source, or adjacent to it, we don't need to cast any rays!
+          // get a dist squared of the mapX/Y coords - If 1 or less then we don't bother doing shadows
+          let lightHit =
             !light.castShadows ||
-            this.rays.castRay(xa, ya, xd, yd, this.map.mapData).distance >= 0.999
-          ) {
+            Math.pow(light.mapX - mapX, 2) + Math.pow(light.mapY - mapY, 2) <= 1;
+
+          if (!lightHit) {
+            lightHit = this.rays.castRay(xa, ya, xd, yd, this.map.mapData).distance >= 0.999;
+          }
+
+          if (lightHit) {
             // We hit the ray so now we sqrt the distance
             distance = Math.max(1.0 - Math.sqrt(distance) / light.radius, 0);
 
@@ -307,7 +344,7 @@ export class RaycasterRenderer3D {
 
     // Might get it the wrong way have to check
     spriteOrdered.sort((s1, s2) => {
-      return s1.distance - s2.distance;
+      return s2.distance - s1.distance;
     });
 
     spriteOrdered.forEach((sprite) => {

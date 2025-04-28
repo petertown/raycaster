@@ -25,7 +25,11 @@ export interface RayResult {
 
 // Doesn't need to be a Util now, can just be exported functions
 export class RaycasterRays {
+  raysCast = 0; // wanna debug how many rays I am casting per frame
+
   public castRay(xa: number, ya: number, xd: number, yd: number, map: Block[][]): RayResult {
+    this.raysCast++;
+
     // How big is this map?
     let mapSizeX = map.length;
     let mapSizeY = map[0].length;

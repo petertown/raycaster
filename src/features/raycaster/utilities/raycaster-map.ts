@@ -16,13 +16,16 @@ export interface Block {
   innerWallTexture: number; // texture used on next block if it comes from a door
   floorTexture: number; // index of texture for floor
   // textures for the half wall
-  open: number; // How open is the half wall - from 0 closed to 1 open
-  // Perhaps a time for when it was opened, and after that time passes, it's closed and no longer passable
+  open: number; // How open is the half wall - from 0 closed to 1 open - managed by the "Door" interface
+  // What lights can be hit in this zone? (Could be none)
+  lights: Light[];
 }
 
 export interface Light {
   x: number;
   y: number;
+  mapX: number;
+  mapY: number;
   // Lights are multipliers, as in 0.0 - 1.0
   red: number;
   green: number;
@@ -31,6 +34,14 @@ export interface Light {
   radius: number;
   // Should we do shadows?
   castShadows: boolean;
+}
+
+// Each vertex of the map should have an ambient light colour, to simulate light bounding around the place
+// This is a TODO we don't even have a list for it
+export interface LightAmbient {
+  red: number;
+  green: number;
+  blue: number;
 }
 
 export interface Sprite {
@@ -61,8 +72,6 @@ export class RaycasterMap {
 
   textures: RaycasterTextures;
 
-  specialCentreLit = false;
-
   constructor(mapSize: number, textures: RaycasterTextures) {
     this.mapSize = mapSize;
     this.textures = textures;
@@ -71,15 +80,165 @@ export class RaycasterMap {
     this.buildMap();
 
     // randomly make lights in empty blocks (temp until sprites work)
+    // Now that sprites work and we make lights from those, we probably want to make am ambient light level for every vertex
+    // That way don't need to do any "checking" of all those lights and adding them together - can do it at the start
     this.createLights();
 
     // Make sprites (lamps etc)
     this.createSprites();
+
+    // Post process the map to find out where the lights can reach
+    // For now do it to ALL lights, to test wether it works
+    // Later, do it only to shadowed lights
+    this.processLights();
+  }
+
+  processLights() {
+    // for each light we'll start in the map point it's in, and travel as far as we can through the grid until we hit a solid unmoving wall
+    // Doors wont count, as they are dynamic so can't block that at all
+    // Do a shortest path, even though it'll go around corners where the light is blocked, might be able to optimise this later
+    // Perhaps for each light, find the point at the leftmost angle, and the point at the rightmost angle
+    //    and use the dot product of those lines and the four points on every gridpoint to see if positive or negative
+    //    then can work out what blocks are totally covered by the light
+    //       might be just an excuse to learn dot product again
+
+    // This method can be slow, as it runs once and wont really impact anything
+
+    // Also, process the non-shadowed lights to not add them to the block lights, but to instead add them to a seperate array of
+    // prebaked lighting, to simulate indirect lighting in a silly way
+
+    const diagonalDistance = Math.sqrt(2);
+
+    for (let light of this.lights) {
+      // what mapX and Y is the light in?
+      let mapX = light.mapX;
+      let mapY = light.mapY;
+
+      // make a map of numbers, as in distance from the light source
+      let mapTest: number[][] = [];
+      for (let x = 0; x < this.mapSize; x++) {
+        let column: number[] = [];
+        for (let y = 0; y < this.mapSize; y++) {
+          column.push(this.mapData[x][y].type === BlockType.Wall ? -1 : 100000);
+          // push a negative if it's a wall - negatives will be ignored
+        }
+        mapTest.push(column);
+      }
+
+      // Now we have this, do a loop until we run out of spaces in this grid
+      // As in, for each square, check distance, so start with the position we are in
+      // This is awful, surely it can be done better, so much nesting, like a birds nest of code
+      let squaresToCheck = [{ x: mapX, y: mapY, distance: 0 }];
+      while (squaresToCheck.length > 0) {
+        // get the first and remove it
+        let element = squaresToCheck.shift(); // Gets first element, removing it from the list
+        if (element) {
+          let currentDist = mapTest[element.x][element.y];
+          if (currentDist > element.distance) {
+            mapTest[element.x][element.y] = element.distance;
+
+            // now add in the squares all around it except obviously edge ones - is there a cleaner way of doing it?
+            // I feel dirty looking at this code
+            for (let nx = -1; nx <= 1; nx++) {
+              for (let ny = -1; ny <= 1; ny++) {
+                // only do it if they are directly left or right or up or down
+                // so at least one is 0 but not both
+                // so not the center either (if both are 0 skip)
+                if (!(nx === 0 && ny === 0)) {
+                  const newMapX = element.x + nx;
+                  const newMapY = element.y + ny;
+                  const dist = nx === 0 || ny === 0 ? 1 : diagonalDistance;
+
+                  if (
+                    newMapX >= 0 &&
+                    newMapX < this.mapSize &&
+                    newMapY >= 0 &&
+                    newMapY < this.mapSize
+                  ) {
+                    // Add this square as an element to test
+                    squaresToCheck.push({
+                      x: newMapX,
+                      y: newMapY,
+                      distance: element.distance + dist,
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // We now have an array with "-1" for each square with a wall, otherwise a number indicating how far it is from the light sources
+      // Loop through it, and for each square with a distance less than the radius of the light, add it into that squares light list
+      for (let x = 0; x < this.mapSize; x++) {
+        for (let y = 0; y < this.mapSize; y++) {
+          let distance = mapTest[x][y];
+          if (distance >= 0 && distance < Math.ceil(light.radius + 1)) {
+            this.mapData[x][y].lights.push(light);
+          }
+        }
+      }
+    }
+
+    // Get some light stats, as clearly this is the performance hog
+    // this.lightingStats();
+  }
+
+  private lightingStats() {
+    let totalLightCount = 0;
+    let maxLightCount = 0;
+    let maxLightX = 0;
+    let maxLightY = 0;
+    let minLightCount = 99999999;
+    let minLightX = 0;
+    let minLightY = 0;
+    let mapTest2: number[][] = [];
+    for (let x = 0; x < this.mapSize; x++) {
+      let column: number[] = [];
+
+      for (let y = 0; y < this.mapSize; y++) {
+        // keep track of the highest count
+        let lightCount = this.mapData[x][y].lights.length;
+        if (lightCount > maxLightCount) {
+          maxLightCount = lightCount;
+          maxLightX = x;
+          maxLightY = y;
+        }
+
+        if (lightCount < minLightCount) {
+          minLightCount = lightCount;
+          minLightX = x;
+          minLightY = y;
+        }
+        totalLightCount += this.mapData[x][y].lights.length;
+
+        column.push(lightCount);
+      }
+      mapTest2.push(column);
+    }
+    let averageLightCount = totalLightCount / Math.pow(this.mapSize, 2);
+    console.log(
+      'section with max lights: ' + maxLightCount + ' x: ' + maxLightX + ' y: ' + maxLightY
+    );
+    console.log(
+      'section with min lights: ' + minLightCount + ' x: ' + minLightX + ' y: ' + minLightY
+    );
+    console.log('Average lights: ' + averageLightCount);
+    let centerPoint = this.mapSize / 2;
+    console.log(
+      'lights at ' +
+      centerPoint +
+      ',' +
+      centerPoint +
+      ': ' +
+      this.mapData[centerPoint][centerPoint].lights.length
+    );
   }
 
   createSprites() {
-    // just make a bunch of lights for now
-    let spriteCount = 5; // How many random dim environmental lights with no shadows
+    // just make a bunch of lamps for now
+    let spriteCount = 3;
     this.sprites = [];
     for (let spriteIdx = 0; spriteIdx < spriteCount; spriteIdx++) {
       let clash = true;
@@ -111,21 +270,22 @@ export class RaycasterMap {
       });
 
       // also push an appropriate light at the same time we make these lamps
-
       this.lights.push({
         x: spriteX + 0.5,
         y: spriteY + 0.5,
+        mapX: spriteX,
+        mapY: spriteY,
         red: 0.8,
         green: 1.0,
         blue: 0.8,
-        radius: 5.0,
+        radius: 4.0,
         castShadows: true,
       });
     }
   }
 
   private createLights() {
-    let lightSize = 10; // How many random dim environmental lights with no shadows
+    let lightSize = 0; // How many random dim environmental lights with no shadows
     this.lights = [];
     for (let lightIdx = 0; lightIdx < lightSize; lightIdx++) {
       let clash = true;
@@ -134,39 +294,31 @@ export class RaycasterMap {
       let lightY = 0;
       let radius = 0;
 
-      let brightnessMultipler = 0.25;
-      let shadowCast = false;
+      let brightnessMultipler = 0.5;
 
-      if (this.specialCentreLit && lightIdx === 0) {
-        // first light makes a shadow, just the one
-        lightX = Math.floor(this.mapSize / 2.0);
-        lightY = Math.floor(this.mapSize / 2.0);
-        radius = 10.0;
-        shadowCast = true;
-        brightnessMultipler = 1.0;
-      } else {
-        while (clash) {
-          lightX = Math.floor(Math.random() * (this.mapSize - 1));
-          lightY = Math.floor(Math.random() * (this.mapSize - 1));
-          if (this.mapData[lightX][lightY].type === BlockType.Empty) {
-            clash = false;
-          }
-          tryidx++;
-          if (tryidx > 100) {
-            clash = false; // give up and just put it in a block who cares I mean ya know
-          }
+      while (clash) {
+        lightX = Math.floor(Math.random() * (this.mapSize - 1));
+        lightY = Math.floor(Math.random() * (this.mapSize - 1));
+        if (this.mapData[lightX][lightY].type === BlockType.Empty) {
+          clash = false;
         }
-        radius = Math.random() * 5 + 5;
+        tryidx++;
+        if (tryidx > 100) {
+          clash = false; // give up and just put it in a block who cares I mean ya know
+        }
       }
+      radius = Math.random() * 1 + 1;
 
       this.lights.push({
         x: lightX + 0.4 + Math.random() * 0.2,
         y: lightY + 0.4 + Math.random() * 0.2,
+        mapX: lightX,
+        mapY: lightY,
         red: Math.random() * brightnessMultipler,
         green: Math.random() * brightnessMultipler,
         blue: Math.random() * brightnessMultipler,
         radius: radius,
-        castShadows: shadowCast,
+        castShadows: false,
       });
     }
   }
@@ -186,7 +338,7 @@ export class RaycasterMap {
         // Later we'll cater for the end of the map
         let isBlock = x === 0 || y === 0 || x === this.mapSize - 1 || y === this.mapSize - 1;
 
-        if (Math.random() > 0.85) {
+        if (Math.random() > 0.75) {
           isBlock = !isBlock;
         }
         if (distance < 4) {
@@ -246,6 +398,7 @@ export class RaycasterMap {
           wallTexture: wallTexture,
           floorTexture: floorTexture,
           innerWallTexture: innerWallTexture,
+          lights: [],
         };
         row.push(newBlock);
 
@@ -285,6 +438,7 @@ export class RaycasterMap {
           wallTexture: 0,
           floorTexture: 0,
           innerWallTexture: 0,
+          lights: [],
         });
       }
       collisionData.push(row);

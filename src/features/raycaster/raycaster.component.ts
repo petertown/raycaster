@@ -56,15 +56,23 @@ export class RaycasterComponent {
   timeDelta = 0;
   timeLast = new Date().getTime();
   timeRate = 0;
-  timeMin = 26; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
+  timeMin = 33; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
   stillDrawing = false;
+  frameTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // last ten frames time
+  frameRate = 0;
+  raysCast = 0;
 
   constructor() {}
 
   ngAfterViewInit(): void {
     this.initGame().then(() => {
       // now that it's loaded, we can make a repeated event to keep triggering
-      setInterval(this.drawLoop, 1);
+
+      // This doesn't quite work, as the renderLoop overwhelms javascript quite a bit
+      // But it's all on the one thread and definitely slows down updating the DOM
+      // Which means while it's definitely got the image ready, it doesn't display it smoothly
+      setInterval(this.renderLoop, 1);
+      setInterval(this.swapLoop, this.timeMin);
     });
   }
 
@@ -170,7 +178,7 @@ export class RaycasterComponent {
     });
   }
 
-  private drawLoop = () => {
+  private renderLoop = () => {
     // current time
     const timeNow = new Date().getTime();
 
@@ -191,7 +199,7 @@ export class RaycasterComponent {
       this.canvas.startDraw(); // fix canvas size and ratio
 
       // Render 3d scene
-      this.renderer3d.drawScene(
+      this.raysCast = this.renderer3d.drawScene(
         this.playerX,
         this.playerY,
         this.playerZ,
@@ -199,7 +207,7 @@ export class RaycasterComponent {
         this.playerV,
       );
 
-      // Only want to do this if we are drawing the image with imageData
+      // Swap to the other render target, so we can start drawing there
       this.canvas.finishDraw();
 
       // Draw map on top of anything drawn
@@ -207,8 +215,36 @@ export class RaycasterComponent {
         this.renderer2d.drawMap(this.playerX, this.playerY, this.playerR);
       }
 
+      const endRenderTime = new Date().getTime();
+      const renderTime = endRenderTime - timeNow;
+
+      // average all last 10 frames time
+      this.frameRate =
+        this.frameTimes.reduce((previousValue: number, currentValue: number) => {
+          return previousValue + currentValue;
+        }, 0) / 10.0;
+      // console.log(1000.0 / avgTime);
+      this.frameTimes.shift(); // remove oldest time
+      this.frameTimes.push(renderTime); // push newest time
+
       this.stillDrawing = false;
     }
+  };
+
+  private swapLoop = () => {
+    this.canvas.screenDraw();
+
+    // draw FPS
+    this.canvas.context.fillStyle = 'white';
+    this.canvas.context.font = '10px Arial';
+    this.canvas.context.fillText('MS: ' + this.frameRate, 2, 10);
+    this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
+    this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
+    this.canvas.context.fillText(
+      'RPP: ' + this.raysCast / (this.canvas.width * this.canvas.height),
+      2,
+      40,
+    );
   };
 
   handleInput() {
@@ -273,7 +309,7 @@ export class RaycasterComponent {
 
   private gameLogic() {
     // Logic of doors
-    this.map.updateDoors(this.timeDelta, Math.floor(this.playerX), Math.floor(this.playerY))
+    this.map.updateDoors(this.timeDelta, Math.floor(this.playerX), Math.floor(this.playerY));
   }
 
   doAction() {
@@ -291,8 +327,6 @@ export class RaycasterComponent {
         (actionCoord.type === BlockType.XDoor || actionCoord.type === BlockType.YDoor)
       ) {
         // found a door!
-        console.log('got a door at ' + actionCoord.x + ', ' + +actionCoord.y);
-
         // Find the door element for this one - bit messy
         let door = this.map.getDoor(actionCoord);
         if (door) {
