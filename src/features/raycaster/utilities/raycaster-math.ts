@@ -10,3 +10,8 @@ export function rotateVectorDirection(direction: Coordinate, radians: number): C
   const sin = Math.sin(radians);
   return { x: direction.x * cos - direction.y * sin, y: direction.x * sin + direction.y * cos };
 }
+
+export function normaliseVectorDirection(direction: Coordinate): Coordinate {
+  const rayLength = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+  return { x: direction.x / rayLength, y: direction.y / rayLength };
+}

@@ -7,6 +7,7 @@ import { RaycasterRays, RayResult } from './utilities/raycaster-ray';
 import { RaycasterRenderer2D } from './utilities/raycaster-renderer-2d';
 import { RaycasterRenderer3D } from './utilities/raycaster-renderer-3d';
 import { RaycasterTextures } from './utilities/raycaster-textures';
+import { castRay } from './utilities/functions-rays';
 
 @Component({
   selector: 'app-raycaster',
@@ -21,7 +22,7 @@ export class RaycasterComponent {
   canvas!: RaycasterCanvas;
 
   // Game settings
-  mapSize = 32;
+  mapSize = 64;
   drawMap = false;
 
   // Player position
@@ -60,7 +61,7 @@ export class RaycasterComponent {
   timeDelta = 0;
   timeNow = 0;
   timeLast = new Date().getTime();
-  timeMin = 15; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
+  timeMin = 13; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
   stillDrawing = false;
   frameTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // last ten frames time
   frameRate = 0;
@@ -339,7 +340,7 @@ export class RaycasterComponent {
     // Do one ray, then do another
     // and at the end we don't care about the actual rayResults, we care about the difference between start and end
     // divided by 4 of course
-    let rayResult1 = this.rays.capRay(this.rays.castRay(colX, colY, rayX, rayY, collisionMap));
+    let rayResult1 = this.rays.capRay(castRay(colX, colY, rayX, rayY, collisionMap, false));
     let differenceX = rayResult1.xHit - colX;
     let differenceY = rayResult1.yHit - colY;
 
@@ -366,7 +367,7 @@ export class RaycasterComponent {
     // find action from player position by doing a ray from the player and seeing what we hit
     let rayX = Math.cos(this.playerR);
     let rayY = Math.sin(this.playerR);
-    let actionResult = this.rays.castRay(this.playerX, this.playerY, rayX, rayY, this.map.mapData);
+    let actionResult = castRay(this.playerX, this.playerY, rayX, rayY, this.map.mapData, false);
 
     // If we got anything back - check before doing anything
     if (actionResult.mapCoords.length > 0) {

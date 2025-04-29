@@ -1,3 +1,4 @@
+import { castRay } from './functions-rays';
 import { RaycasterCanvas } from './raycaster-canvas';
 import { BlockType, RaycasterMap } from './raycaster-map';
 import { mod } from './raycaster-math';
@@ -97,13 +98,7 @@ export class RaycasterRenderer2D {
 
       const screenRay = screenRays[x];
 
-      let rayResult = this.rays.castRay(
-        playerX,
-        playerY,
-        screenRay.x,
-        screenRay.y,
-        this.map.mapData,
-      );
+      let rayResult = castRay(playerX, playerY, screenRay.x, screenRay.y, this.map.mapData, false);
 
       this.drawRay(drawArea, rayResult, this.coneColour);
     }
@@ -121,7 +116,7 @@ export class RaycasterRenderer2D {
     let xd = Math.cos(playerR);
     let yd = Math.sin(playerR);
 
-    let rayResult = this.rays.castRay(xa, ya, xd, yd, this.map.mapData);
+    let rayResult = castRay(xa, ya, xd, yd, this.map.mapData, false);
 
     let colour = 'red';
     if (this.drawVisible) {
@@ -146,7 +141,7 @@ export class RaycasterRenderer2D {
         xa = light.x;
         ya = light.y;
 
-        rayResult = this.rays.castRay(xa, ya, xd, yd, this.map.mapData);
+        rayResult = castRay(xa, ya, xd, yd, this.map.mapData, false, false);
         colour = 'green';
         if (rayResult.distance >= 0.999) {
           this.canvas.context.lineWidth = 5;
@@ -288,7 +283,7 @@ export class RaycasterRenderer2D {
     // Do one ray, then do another
     // and at the end we don't care about the actual rayResults, we care about the difference between start and end
     // divided by 4 of course
-    let rayResult1 = this.rays.capRay(this.rays.castRay(colX, colY, rayX, rayY, collisionMap));
+    let rayResult1 = this.rays.capRay(castRay(colX, colY, rayX, rayY, collisionMap, false, false));
     let rayResult2: RayResult | null = null;
 
     // If we have ray left, we should do a second ray

@@ -1,3 +1,4 @@
+import { castRay } from './functions-rays';
 import { rotateVectorDirection } from './raycaster-math';
 import { Coordinate } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
@@ -80,7 +81,7 @@ export class RaycasterMap {
 
   // settings for map building TEMP until it makes a proper map
   lightSprites = 10;
-  lightMood = 5;
+  lightMood = 20;
 
   constructor(mapSize: number, textures: RaycasterTextures) {
     this.mapSize = mapSize;
@@ -108,93 +109,78 @@ export class RaycasterMap {
   }
 
   processDynamicLighting() {
-    // Perhaps for each light, find the point at the leftmost angle, and the point at the rightmost angle
-    //    and use the dot product of those lines and the four points on every gridpoint to see if positive or negative
-    //    then can work out what blocks are totally covered by the light
-    //       might be just an excuse to learn dot product again
-    // This method can be slow, as it runs once and wont really impact anything
-    // So do it solid wall by solid wall (making sure to avoid the current space just in case we screw up and add a light)
-    // I guess if we are in a wall, we should add the light to nothing
-    // Find the angle from the light to each point on the cube, find the leftmost and the rightmost
-    // Then check all points (that haven't yet been checked) that are FURTHER AWWAY than the points we just tested to
-    // As in - make a line between left and right points - or just pick the furthest one we've checked
-    // And then check, is it covered? If so, mark it as covered. Use that cross product formula in this class
-    // If we are consistent with the direction of the ray and the points, we should be able to say if every single point is to the right of the left point
-    // and to the left of the right point, then it is fully covered and wont need to ever check that light
-    // Do it for every solid wall in the map
-    // Could start in the center but... speed isnt important for this one
+    // For each light, cast a ray to every single vertex on the map, plus every vertex slightly shifted to the left and to the right
 
-    // Process every dynamic light
+    // I think the method that that woman made is probably the best
+    // a ray for EVERY single vertex, But limit in it's length to the radius of the light
+    // plus rays for just left and right of each vertex
+    // For every one of the squares that we intersect with, that one will need this light
+    // sseems simpler in every way
+
+    // So make the light ray to the light, cast three rays, one normal, one slightly to the left, one slightly to the right
+    const rayOffsetAngle = 0.0001;
+
+    // Could also store the distances of each corner for the light - so no distance calcs need to be done real time
+    // can use the bilinear interpolation to work out the approx distance which will be accurate enough but MUCH faster
+    // So some sort of container that holds the light source and has these details on top of it
+    // like { light, shadows, tlbright, trbright, blbright, brbright}
+
     this.lights
       .filter((light) => {
         return light.castShadows;
       })
       .forEach((light) => {
         // The ray start position when doing this test
-        let lx = light.x;
-        let ly = light.y;
+        let xa = light.x;
+        let ya = light.y;
 
         // build a temp place to store every already blocked map square so we don't need to check then all once they are already eliminated
         // 0 to say they are not covered, 1 means partial cover, 2 means fully covered
         // A square that is fully covered doesn't need to be tested
-        let checkedWalls: number[][] = [];
+        let hitByRay: boolean[][] = [];
         for (let x = 0; x < this.mapSize; x++) {
-          let column: number[] = [];
-          for (let y = 0; y < this.mapSize + 1; y++) {
-            column.push(0);
+          let columnHit: boolean[] = [];
+          for (let y = 0; y < this.mapSize; y++) {
+            columnHit.push(false);
           }
-          checkedWalls.push(column);
+          hitByRay.push(columnHit);
         }
 
-        // Go through every solid wall on the map - Don't test a wall that's already been tested though
-        // And only test the areas that are within the radius of the light (well a simpler version, test from x - radius to x + radius etc)
+        // try and hit every single vertex
+        for (let xVert = 0; xVert < this.mapSize + 1; xVert++) {
+          for (let yVert = 0; yVert < this.mapSize + 1; yVert++) {
+            const rd: Coordinate = { x: xVert - xa, y: yVert - ya };
+
+            // Cast to every vertex, and for every coordinate we pass through we add this light
+            for (let angle = -1; angle <= 1; angle++) {
+              let rotatedDirection = rotateVectorDirection(rd, angle * rayOffsetAngle);
+
+              let rayResult = castRay(
+                xa,
+                ya,
+                rotatedDirection.x,
+                rotatedDirection.y,
+                this.mapData,
+                true,
+                true,
+              );
+
+              rayResult.mapCoords.forEach((coord) => {
+                if (coord.type !== BlockType.Wall) {
+                  hitByRay[coord.x][coord.y] = true;
+                }
+              });
+            }
+          }
+        }
+
+        // now go through and set this if needed
         for (let x = 0; x < this.mapSize; x++) {
           for (let y = 0; y < this.mapSize; y++) {
-            // if already tested, no need to test, and only test walls here
-            if (checkedWalls[x][y] !== 2 && this.mapData[x][y].type === BlockType.Wall) {
-              // We haven't yet eliminated this wall section
-              // we want to find the leftmost vertex of this wall, and the rightmost vertex
-
-              // Get center position of the box relative to the light
-              const centerX = x + 0.5 - lx;
-              const centerY = y + 0.5 - ly;
-
-              // Find the angle using atan2
-              const centerAngle = Math.atan2(centerY, centerX);
-
-              // Then rotate all points negative to that angle, so we are centered on the box
-              const tlPoint = rotateVectorDirection({ x: x, y: y }, centerAngle);
-              const trPoint = rotateVectorDirection({ x: x + 1, y: y }, centerAngle);
-              const blPoint = rotateVectorDirection({ x: x, y: y + 1 }, centerAngle);
-              const brPoint = rotateVectorDirection({ x: x + 1, y: y + 1 }, centerAngle);
-
-              // Then find all angles
-              const tlAngle = Math.atan2(tlPoint.y, tlPoint.x);
-              const trAngle = Math.atan2(trPoint.y, trPoint.x);
-              const blAngle = Math.atan2(blPoint.y, blPoint.x);
-              const brAngle = Math.atan2(brPoint.y, brPoint.x);
-
-              // then find the leftmost and the rightmost and subtract the changed angle from both of those,
-              const minAngle = Math.min(tlAngle, trAngle, blAngle, brAngle) - centerAngle;
-              const maxAngle = Math.max(tlAngle, trAngle, blAngle, brAngle) - centerAngle;
-
-              // subtract the changed angle from both of those, and make the rays
-              
-
-              // Also make a line that is from the left point found to the right point
-              // cross product every point with that to make sure whatever we're testing is BEHIND the box we're looking at
-              // Is there a way to know that there was NO collision with the square at all? And thus can mark it as "never shadowed" ?
-              // So the light square can have a list of lights and a boolean to say wether it should check shadows
-              // perhaps if the square has points on both sides of either of the left or right lines, it's partial
-              // if it's completely within then it's not lit at all
-              // and if all of it's corners are to the left or right of BOTH lines, that means it wont be shadowed
-              // So perhaps more complex than just yes no check
-              // Ah but if there's a doorway in between, we will need to check, perhaps can do this in future
-              // But the speed increase would be massive for big open areas with the lights which is the slowest part
-              // Could also store the distances of each corner for the light - so no distance calcs need to be done real time
-              // can use the bilinear interpolation to work out the approx distance which will be accurate enough but MUCH faster
-              // So some sort of container that holds the light source and has these details on top of it
-              // like { light, shadows, tlbright, trbright, blbright, brbright}
+            if (hitByRay[x][y] && this.mapData[x][y].type !== BlockType.Wall) {
+              // instead of doing this, set the vertex lighting
+              // move this lights.push into the other method when it's ready
+              this.mapData[x][y].lights.push(light);
             }
           }
         }
@@ -279,19 +265,7 @@ export class RaycasterMap {
 
       // We now have an array with "-1" for each square with a wall, otherwise a number indicating how far it is from the light sources
       // Loop through it, and for each square with a distance less than the radius of the light, add it into that squares light list
-      if (light.castShadows) {
-        // Only add shadowed lighting here
-        for (let x = 0; x < this.mapSize; x++) {
-          for (let y = 0; y < this.mapSize; y++) {
-            let distance = mapTest[x][y];
-            if (distance >= 0 && distance < Math.ceil(light.radius + 1)) {
-              // instead of doing this, set the vertex lighting
-              // move this lights.push into the other method when it's ready
-              this.mapData[x][y].lights.push(light);
-            }
-          }
-        }
-      } else {
+      if (!light.castShadows) {
         // So we have the distance of the light including fake bouncing from the source, so now for each vertex we'll get the averages
         // of the squares around it, and then calculate the light levels there
         // Only for non-shadowed lights
@@ -483,7 +457,7 @@ export class RaycasterMap {
           isBlock = false;
         }
 
-        let type = isBlock ? BlockType.Wall : BlockType.Empty;
+        let type: BlockType = isBlock ? BlockType.Wall : BlockType.Empty;
 
         if (distance < 3) {
           type = BlockType.Empty;
