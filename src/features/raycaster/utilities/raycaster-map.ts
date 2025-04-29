@@ -1,3 +1,4 @@
+import { rotateVectorDirection } from './raycaster-math';
 import { Coordinate } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
@@ -20,6 +21,7 @@ export interface Block {
   open: number; // How open is the half wall - from 0 closed to 1 open - managed by the "Door" interface
   // What lights can be hit in this zone? (Could be none)
   lights: Light[];
+  // perhaps for lights that are never shadowed, just store the combined brightness
 }
 
 export interface Light {
@@ -133,13 +135,13 @@ export class RaycasterMap {
         let ly = light.y;
 
         // build a temp place to store every already blocked map square so we don't need to check then all once they are already eliminated
-        // False to say they are not covered, true means covered
-        // A square that is itself already covered doesn't need a retest
-        let checkedWalls: boolean[][] = [];
+        // 0 to say they are not covered, 1 means partial cover, 2 means fully covered
+        // A square that is fully covered doesn't need to be tested
+        let checkedWalls: number[][] = [];
         for (let x = 0; x < this.mapSize; x++) {
-          let column: boolean[] = [];
+          let column: number[] = [];
           for (let y = 0; y < this.mapSize + 1; y++) {
-            column.push(false);
+            column.push(0);
           }
           checkedWalls.push(column);
         }
@@ -149,19 +151,38 @@ export class RaycasterMap {
         for (let x = 0; x < this.mapSize; x++) {
           for (let y = 0; y < this.mapSize; y++) {
             // if already tested, no need to test, and only test walls here
-            if (!checkedWalls[x][y] && this.mapData[x][y].type === BlockType.Wall) {
+            if (checkedWalls[x][y] !== 2 && this.mapData[x][y].type === BlockType.Wall) {
               // We haven't yet eliminated this wall section
               // we want to find the leftmost vertex of this wall, and the rightmost vertex
+
+              // Get center position of the box relative to the light
+              const centerX = x + 0.5 - lx;
+              const centerY = y + 0.5 - ly;
+
               // Find the angle using atan2
-              // Only problem is ... negative angles, how to handle?
-              // Okay so, find the center of the box, and get it's angle FIRST
-              // Then rotate all points negative to that angle, so we are centered
+              const centerAngle = Math.atan2(centerY, centerX);
+
+              // Then rotate all points negative to that angle, so we are centered on the box
+              const tlPoint = rotateVectorDirection({ x: x, y: y }, centerAngle);
+              const trPoint = rotateVectorDirection({ x: x + 1, y: y }, centerAngle);
+              const blPoint = rotateVectorDirection({ x: x, y: y + 1 }, centerAngle);
+              const brPoint = rotateVectorDirection({ x: x + 1, y: y + 1 }, centerAngle);
+
               // Then find all angles
-              // then find the lowest, and then the highest
+              const tlAngle = Math.atan2(tlPoint.y, tlPoint.x);
+              const trAngle = Math.atan2(trPoint.y, trPoint.x);
+              const blAngle = Math.atan2(blPoint.y, blPoint.x);
+              const brAngle = Math.atan2(brPoint.y, brPoint.x);
+
+              // then find the leftmost and the rightmost and subtract the changed angle from both of those,
+              const minAngle = Math.min(tlAngle, trAngle, blAngle, brAngle) - centerAngle;
+              const maxAngle = Math.max(tlAngle, trAngle, blAngle, brAngle) - centerAngle;
+
               // subtract the changed angle from both of those, and make the rays
+              
+
               // Also make a line that is from the left point found to the right point
               // cross product every point with that to make sure whatever we're testing is BEHIND the box we're looking at
-
               // Is there a way to know that there was NO collision with the square at all? And thus can mark it as "never shadowed" ?
               // So the light square can have a list of lights and a boolean to say wether it should check shadows
               // perhaps if the square has points on both sides of either of the left or right lines, it's partial
@@ -170,7 +191,6 @@ export class RaycasterMap {
               // So perhaps more complex than just yes no check
               // Ah but if there's a doorway in between, we will need to check, perhaps can do this in future
               // But the speed increase would be massive for big open areas with the lights which is the slowest part
-
               // Could also store the distances of each corner for the light - so no distance calcs need to be done real time
               // can use the bilinear interpolation to work out the approx distance which will be accurate enough but MUCH faster
               // So some sort of container that holds the light source and has these details on top of it
