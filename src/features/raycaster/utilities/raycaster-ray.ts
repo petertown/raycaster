@@ -4,7 +4,7 @@
 import { Block, BlockType } from './raycaster-map';
 import { rotateVectorDirection } from './raycaster-math';
 
-export interface Direction {
+export interface Coordinate {
   x: number;
   y: number;
 }
@@ -297,8 +297,8 @@ export class RaycasterRays {
     projectionLength: number,
     width: number,
     radians: number,
-  ): Direction[] {
-    let initialRays: Direction[] = [];
+  ): Coordinate[] {
+    let initialRays: Coordinate[] = [];
 
     // one for each column of the canvas
     for (let x = 0; x < width; x++) {

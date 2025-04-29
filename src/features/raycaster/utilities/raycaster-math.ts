@@ -1,10 +1,10 @@
-import { Direction } from './raycaster-ray';
+import { Coordinate } from './raycaster-ray';
 
 export function mod(n: number, m: number) {
   return ((n % m) + m) % m;
 }
 
-export function rotateVectorDirection(direction: Direction, radians: number): Direction {
+export function rotateVectorDirection(direction: Coordinate, radians: number): Coordinate {
   // Rotate this ray by the player angle
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);

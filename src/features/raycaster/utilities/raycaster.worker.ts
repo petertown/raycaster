@@ -1,18 +1,27 @@
 /// <reference lib="webworker" />
-import { Block, BlockType, RaycasterMap, Sprite } from './raycaster-map';
+import { Block, BlockType, Colour, RaycasterMap, Sprite } from './raycaster-map';
 import { rotateVectorDirection } from './raycaster-math';
-import { Direction, RayResult } from './raycaster-ray';
+import { Coordinate, RayResult } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
 // Can move a lot of stuff from function params into here, but not sure how good that is
 let raysCast = 0;
-let ambientRed = 1.0;
-let ambientGreen = 1.0;
-let ambientBlue = 1.0;
+let ambientRed = 0.5;
+let ambientGreen = 0.5;
+let ambientBlue = 0.5;
 let depthList: number[];
+// This is all "app wide globals" which could be good for some generic rendering data
+// But I don't think I should put anything else here
+
+// In hindsight, I could just be passing the data object around, but is that right?
+// Then none of the other render/ray methods are generic
+// Maybe not
+
+// Either way, one at a time put these functions in different files and make sure they aren't duplicated
+// Because right now it's mostly duplicates
 
 addEventListener('message', ({ data }) => {
-  // reset rays cast TEMP
+  // reset rays cast amount
   raysCast = 0;
 
   // list of depths
@@ -40,6 +49,7 @@ addEventListener('message', ({ data }) => {
       screenRay.x,
       screenRay.y,
       data.map.mapData,
+      false,
     );
     depthList.push(rayResult.distance);
 
@@ -69,28 +79,32 @@ addEventListener('message', ({ data }) => {
       textureId = mapCoordSecondLast.innerWallTexture;
     }
 
-    // draw the sky, wall and floor
-    canvasIndice = drawSky(
-      drawPoints,
-      verticalSlide,
-      data.renderHeight,
-      data.renderWidth,
-      data.target,
-      canvasIndice,
-    );
+    // draw the sky
+    if (drawPoints.drawStart > 0) {
+      canvasIndice = drawSky(
+        drawPoints,
+        verticalSlide,
+        data.renderHeight,
+        data.renderWidth,
+        data.target,
+        canvasIndice,
+      );
+    }
 
-    // When drawing the walls we need to update the depth list for drawing sprites later
-    canvasIndice = drawWall(
-      rayResult,
-      drawPoints,
-      data.textures,
-      textureId,
-      data.map,
-      mapCoordSecondLast ?? mapCoordLast,
-      data.renderWidth,
-      data.target,
-      canvasIndice,
-    );
+    // Only draw wall if there's any section of wall at all
+    if (drawPoints.drawStart < drawPoints.drawEnd) {
+      canvasIndice = drawWall(
+        rayResult,
+        drawPoints,
+        data.textures,
+        textureId,
+        data.map,
+        mapCoordSecondLast ?? mapCoordLast,
+        data.renderWidth,
+        data.target,
+        canvasIndice,
+      );
+    }
 
     // TODO: We should do the floors as horizontal spans, as it's easier to calculate
     // For the lighting, we can do the lighting calculated at specific points along the map, so we'll do the floors in spans of unbroken floors from left to right
@@ -99,18 +113,20 @@ addEventListener('message', ({ data }) => {
     // then we'll want to know the distance between the two
     // This might be faster, but probably not so good for the shadows - though we could fade out the shadows in the distance?
     // We should probably first attempt to precalculate the possibility for lights for each square, so we can avoid unnecessary checks
-    drawFloor(
-      rayResult,
-      drawPoints,
-      data.playerZ,
-      verticalSlide,
-      data.textures,
-      data.renderHeight,
-      data.renderWidth,
-      data.map,
-      data.target,
-      canvasIndice,
-    );
+    if (drawPoints.drawEnd < data.renderHeight) {
+      drawFloor(
+        rayResult,
+        drawPoints,
+        data.playerZ,
+        verticalSlide,
+        data.textures,
+        data.renderHeight,
+        data.renderWidth,
+        data.map,
+        data.target,
+        canvasIndice,
+      );
+    }
   }
 
   // draw sprites
@@ -186,6 +202,13 @@ function drawWall(
   let lightRed = ambientRed / (rayResult.distance + 1);
   let lightGreen = ambientGreen / (rayResult.distance + 1);
   let lightBlue = ambientBlue / (rayResult.distance + 1);
+
+  // add prebaked lighting
+  const bakedLighting = getLightingAt(rayResult.xHit, rayResult.yHit, map);
+  lightRed += bakedLighting.red;
+  lightGreen += bakedLighting.green;
+  lightBlue += bakedLighting.blue;
+
   for (let light of lastMapCoord.lights) {
     const xd = rayResult.xHit - light.x;
     const yd = rayResult.yHit - light.y;
@@ -200,16 +223,13 @@ function drawWall(
       let lightHit =
         Math.pow(light.mapX - lastMapCoord.x, 2) + Math.pow(light.mapY - lastMapCoord.y, 2) <= 1;
 
-      if (
-        !light.castShadows ||
-        lastMapCoord.type === BlockType.XDoor ||
-        lastMapCoord.type === BlockType.YDoor
-      ) {
+      if (lastMapCoord.type === BlockType.XDoor || lastMapCoord.type === BlockType.YDoor) {
         lightHit = false;
       }
 
       if (!lightHit) {
-        lightHit = castRay(xa, ya, xd, yd, map.mapData).distance >= 0.999;
+        lightHit =
+          !light.castShadows || castRay(xa, ya, xd, yd, map.mapData, true).distance >= 0.999;
       }
 
       if (lightHit) {
@@ -243,6 +263,13 @@ function drawWall(
   return canvasIndice;
 }
 
+// I'd like to make a new version of this which happens after all walls are drawn and it has stored all the heights of the walls
+// And then we can do it horizontally
+// Then the "low detail" setting can be horizontal not vertical, thought that might look worse, it could do the full horizontal detail and save it
+// and then the next row would print out the same details unless it needs to get a new one that's missing
+// It might be more efficient
+// We could also use the same texture mapping to also interpolate between the raycasting
+// but first - get the precalculated shader working and maybe clean up the code so we don't have it all duplicated everywhere
 function drawFloor(
   rayResult: RayResult,
   drawPoints: {
@@ -264,6 +291,13 @@ function drawFloor(
   let xPos: number;
   let yPos: number;
 
+  // Only do light rays for every third pixel
+  let lightRed = 0;
+  let lightGreen = 0;
+  let lightBlue = 0;
+  let firstCalc = true;
+  let lightCalcMod = 3;
+
   for (let y = drawPoints.drawEnd + 1; y < renderHeight; y++) {
     let yAdjusted = y + -Math.min(0, drawPoints.drawEnd);
     const floorDistance =
@@ -277,45 +311,54 @@ function drawFloor(
     const mapSection = map.mapData[mapX][mapY];
     const floorTexture = textures.textureList[mapSection.floorTexture].data;
 
-    // Do light rays - can I make this a common bit of code so it's not duplicated for walls?
-    let lightRed = ambientRed / (floorDistance + 1);
-    let lightGreen = ambientGreen / (floorDistance + 1);
-    let lightBlue = ambientBlue / (floorDistance + 1);
-    for (let light of mapSection.lights) {
-      const xd = xPos - light.x;
-      const yd = yPos - light.y;
-      const xa = light.x;
-      const ya = light.y;
+    // Do light rays - can I make this a common bit of code so it's not duplicated for walls and maybe ceilings?
+    // Also only do every second pixel, or third, try to limit how many rays we need
+    if (firstCalc || y % lightCalcMod === 0) {
+      firstCalc = false;
 
-      // Squared distance
-      let distance = xd * xd + yd * yd;
-      if (distance < Math.pow(light.radius, 2)) {
-        // testing the distance squared is less than the desired distance squared before casting rays!
+      lightRed = ambientRed / (floorDistance + 1);
+      lightGreen = ambientGreen / (floorDistance + 1);
+      lightBlue = ambientBlue / (floorDistance + 1);
 
-        // Also if we are in the same square as the light source, or adjacent to it, we don't need to cast any rays!
-        // get a dist squared of the mapX/Y coords - If 1 or less then we don't bother doing shadows
+      // add prebaked lighting
+      const bakedLighting = getLightingAt(xPos, yPos, map);
+      lightRed += bakedLighting.red;
+      lightGreen += bakedLighting.green;
+      lightBlue += bakedLighting.blue;
 
-        let lightHit = Math.pow(light.mapX - mapX, 2) + Math.pow(light.mapY - mapY, 2) <= 1;
+      for (let light of mapSection.lights) {
+        const xd = xPos - light.x;
+        const yd = yPos - light.y;
+        const xa = light.x;
+        const ya = light.y;
 
-        if (
-          !light.castShadows ||
-          mapSection.type === BlockType.XDoor ||
-          mapSection.type === BlockType.YDoor
-        ) {
-          lightHit = false;
-        }
+        // Squared distance
+        let distance = xd * xd + yd * yd;
+        if (distance < Math.pow(light.radius, 2)) {
+          // testing the distance squared is less than the desired distance squared before casting rays!
 
-        if (!lightHit) {
-          lightHit = castRay(xa, ya, xd, yd, map.mapData).distance >= 0.999;
-        }
+          // Also if we are in the same square as the light source, or adjacent to it, we don't need to cast any rays!
+          // get a dist squared of the mapX/Y coords - If 1 or less then we don't bother doing shadows
 
-        if (lightHit) {
-          // We hit the ray so now we sqrt the distance
-          distance = Math.max(1.0 - Math.sqrt(distance) / light.radius, 0);
+          let lightHit = Math.pow(light.mapX - mapX, 2) + Math.pow(light.mapY - mapY, 2) <= 1;
 
-          lightRed += light.red * distance;
-          lightGreen += light.green * distance;
-          lightBlue += light.blue * distance;
+          if (mapSection.type === BlockType.XDoor || mapSection.type === BlockType.YDoor) {
+            lightHit = false;
+          }
+
+          if (!lightHit) {
+            lightHit =
+              !light.castShadows || castRay(xa, ya, xd, yd, map.mapData, true).distance >= 0.999;
+          }
+
+          if (lightHit) {
+            // We hit the ray so now we sqrt the distance
+            distance = Math.max(1.0 - Math.sqrt(distance) / light.radius, 0);
+
+            lightRed += light.red * distance;
+            lightGreen += light.green * distance;
+            lightBlue += light.blue * distance;
+          }
         }
       }
     }
@@ -468,9 +511,10 @@ function getWallDrawingPoints(
 ) {
   const cameraHeight = playerZ * renderHeight;
 
-  // If we round these off, we can make the low precision Kens Labyrinth texture effect
+  const wallHeight = 1.0; // maybe store it elsewhere as we also need to use this to deal with the texture scales
+
   const heightStart =
-    verticalSlide + (-renderHeight + cameraHeight) / distance + renderHeight / 2.0;
+    verticalSlide + (-renderHeight * wallHeight + cameraHeight) / distance + renderHeight / 2.0;
   const heightEnd = verticalSlide + cameraHeight / distance + renderHeight / 2.0;
   const heightDifference = (heightEnd - heightStart) * 1.0;
 
@@ -496,7 +540,14 @@ function getColorIndicesForCoord(x: number, y: number, width: number, height: nu
   return { red: red, green: red + 1, blue: red + 2, alpha: red + 3 };
 }
 
-function castRay(xa: number, ya: number, xd: number, yd: number, map: Block[][]): RayResult {
+function castRay(
+  xa: number,
+  ya: number,
+  xd: number,
+  yd: number,
+  map: Block[][],
+  stopAtMax: boolean,
+): RayResult {
   raysCast++;
 
   // How big is this map?
@@ -565,7 +616,9 @@ function castRay(xa: number, ya: number, xd: number, yd: number, map: Block[][])
   // Loop until we reach a limit or a wall - make sure to limit so we don't go out of bounds!
   let hit = false;
   let tests = 0;
-  while (!hit) {
+
+  // stop when we hit max if we have set stopAtMax
+  while (!hit && (currentLength < 1.0 || !stopAtMax)) {
     tests++;
 
     // First check if there is a half wall in the mapCoord we are currently testing
@@ -731,8 +784,8 @@ function getScreenRayVectors(
   projectionLength: number,
   width: number,
   radians: number,
-): Direction[] {
-  let initialRays: Direction[] = [];
+): Coordinate[] {
+  let initialRays: Coordinate[] = [];
 
   // one for each column of the canvas
   for (let x = 0; x < width; x++) {
@@ -744,4 +797,47 @@ function getScreenRayVectors(
   }
 
   return initialRays;
+}
+
+// Perhaps can do the ray lighting here too
+function getLightingAt(x: number, y: number, map: RaycasterMap) {
+  // However slow this is, it's gonna be faster than raycasting shadows or whatever else surely?
+  // But if it doesn't work... just get rid of it I guess
+  const mapX1 = Math.floor(x);
+  const mapY1 = Math.floor(y);
+  const mapX2 = mapX1 + 1;
+  const mapY2 = mapY1 + 1;
+
+  const tl = map.lightData[mapX1][mapY1];
+  const tr = map.lightData[mapX2][mapY1];
+  const bl = map.lightData[mapX1][mapY2];
+  const br = map.lightData[mapX2][mapY2];
+
+  // interpolate between the four points (bilinear interpolation)
+
+  // percent across the two axis
+  const xpc2 = x - mapX1;
+  const xpc1 = 1 - xpc2;
+  const ypc2 = y - mapY1;
+  const ypc1 = 1 - ypc2;
+
+  // top col and bottom col
+  const topCol = blendColours(tl, tr, xpc1, xpc2);
+  const bottomCol = blendColours(bl, br, xpc1, xpc2);
+  const midCol = blendColours(topCol, bottomCol, ypc1, ypc2);
+
+  return midCol;
+}
+
+function blendColours(
+  colour1: Colour,
+  colour2: Colour,
+  percent1: number,
+  percent2: number,
+): Colour {
+  return {
+    red: colour1.red * percent1 + colour2.red * percent2,
+    green: colour1.green * percent1 + colour2.green * percent2,
+    blue: colour1.blue * percent1 + colour2.blue * percent2,
+  };
 }

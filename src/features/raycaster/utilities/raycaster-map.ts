@@ -1,3 +1,4 @@
+import { Coordinate } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
 export enum BlockType {
@@ -38,7 +39,7 @@ export interface Light {
 
 // Each vertex of the map should have an ambient light colour, to simulate light bounding around the place
 // This is a TODO we don't even have a list for it
-export interface LightAmbient {
+export interface Colour {
   red: number;
   green: number;
   blue: number;
@@ -62,7 +63,10 @@ export class RaycasterMap {
   // Always do [x] [y] consistently
   mapSize: number;
   mapData!: Block[][];
+
   lights!: Light[];
+  lightData!: Colour[][];
+
   sprites!: Sprite[];
 
   doors!: Door[];
@@ -71,6 +75,10 @@ export class RaycasterMap {
   doorOpenPassable = 0.5; // How open does a door have to be to be passable
 
   textures: RaycasterTextures;
+
+  // settings for map building TEMP until it makes a proper map
+  lightSprites = 10;
+  lightMood = 5;
 
   constructor(mapSize: number, textures: RaycasterTextures) {
     this.mapSize = mapSize;
@@ -87,25 +95,105 @@ export class RaycasterMap {
     // Make sprites (lamps etc)
     this.createSprites();
 
-    // Post process the map to find out where the lights can reach
-    // For now do it to ALL lights, to test wether it works
-    // Later, do it only to shadowed lights
-    this.processLights();
+    // Now make vertex lighting that's baked in and doesn't change
+    this.processBakedLighting();
+
+    // Add shadowed lights to the areas that potentially could have them or lights that are animated
+    this.processDynamicLighting();
+
+    // Get some light stats, as clearly this is the performance hog
+    // this.lightingStats();
   }
 
-  processLights() {
-    // for each light we'll start in the map point it's in, and travel as far as we can through the grid until we hit a solid unmoving wall
-    // Doors wont count, as they are dynamic so can't block that at all
-    // Do a shortest path, even though it'll go around corners where the light is blocked, might be able to optimise this later
+  processDynamicLighting() {
     // Perhaps for each light, find the point at the leftmost angle, and the point at the rightmost angle
     //    and use the dot product of those lines and the four points on every gridpoint to see if positive or negative
     //    then can work out what blocks are totally covered by the light
     //       might be just an excuse to learn dot product again
-
     // This method can be slow, as it runs once and wont really impact anything
+    // So do it solid wall by solid wall (making sure to avoid the current space just in case we screw up and add a light)
+    // I guess if we are in a wall, we should add the light to nothing
+    // Find the angle from the light to each point on the cube, find the leftmost and the rightmost
+    // Then check all points (that haven't yet been checked) that are FURTHER AWWAY than the points we just tested to
+    // As in - make a line between left and right points - or just pick the furthest one we've checked
+    // And then check, is it covered? If so, mark it as covered. Use that cross product formula in this class
+    // If we are consistent with the direction of the ray and the points, we should be able to say if every single point is to the right of the left point
+    // and to the left of the right point, then it is fully covered and wont need to ever check that light
+    // Do it for every solid wall in the map
+    // Could start in the center but... speed isnt important for this one
 
-    // Also, process the non-shadowed lights to not add them to the block lights, but to instead add them to a seperate array of
-    // prebaked lighting, to simulate indirect lighting in a silly way
+    // Process every dynamic light
+    this.lights
+      .filter((light) => {
+        return light.castShadows;
+      })
+      .forEach((light) => {
+        // The ray start position when doing this test
+        let lx = light.x;
+        let ly = light.y;
+
+        // build a temp place to store every already blocked map square so we don't need to check then all once they are already eliminated
+        // False to say they are not covered, true means covered
+        // A square that is itself already covered doesn't need a retest
+        let checkedWalls: boolean[][] = [];
+        for (let x = 0; x < this.mapSize; x++) {
+          let column: boolean[] = [];
+          for (let y = 0; y < this.mapSize + 1; y++) {
+            column.push(false);
+          }
+          checkedWalls.push(column);
+        }
+
+        // Go through every solid wall on the map - Don't test a wall that's already been tested though
+        // And only test the areas that are within the radius of the light (well a simpler version, test from x - radius to x + radius etc)
+        for (let x = 0; x < this.mapSize; x++) {
+          for (let y = 0; y < this.mapSize; y++) {
+            // if already tested, no need to test, and only test walls here
+            if (!checkedWalls[x][y] && this.mapData[x][y].type === BlockType.Wall) {
+              // We haven't yet eliminated this wall section
+              // we want to find the leftmost vertex of this wall, and the rightmost vertex
+              // Find the angle using atan2
+              // Only problem is ... negative angles, how to handle?
+              // Okay so, find the center of the box, and get it's angle FIRST
+              // Then rotate all points negative to that angle, so we are centered
+              // Then find all angles
+              // then find the lowest, and then the highest
+              // subtract the changed angle from both of those, and make the rays
+              // Also make a line that is from the left point found to the right point
+              // cross product every point with that to make sure whatever we're testing is BEHIND the box we're looking at
+
+              // Is there a way to know that there was NO collision with the square at all? And thus can mark it as "never shadowed" ?
+              // So the light square can have a list of lights and a boolean to say wether it should check shadows
+              // perhaps if the square has points on both sides of either of the left or right lines, it's partial
+              // if it's completely within then it's not lit at all
+              // and if all of it's corners are to the left or right of BOTH lines, that means it wont be shadowed
+              // So perhaps more complex than just yes no check
+              // Ah but if there's a doorway in between, we will need to check, perhaps can do this in future
+              // But the speed increase would be massive for big open areas with the lights which is the slowest part
+
+              // Could also store the distances of each corner for the light - so no distance calcs need to be done real time
+              // can use the bilinear interpolation to work out the approx distance which will be accurate enough but MUCH faster
+              // So some sort of container that holds the light source and has these details on top of it
+              // like { light, shadows, tlbright, trbright, blbright, brbright}
+            }
+          }
+        }
+      });
+  }
+
+  processBakedLighting() {
+    // for each light we'll start in the map point it's in, and travel as far as we can through the grid until we hit a solid unmoving wall
+    // Doors wont count, as they are dynamic so can't block that at all
+    // Do a shortest path, even though it'll go around corners where the light is blocked, to make fake indirect lighting
+
+    this.lightData = [];
+    for (let x = 0; x < this.mapSize + 1; x++) {
+      let column: Colour[] = [];
+      for (let y = 0; y < this.mapSize + 1; y++) {
+        column.push({ red: 0, green: 0, blue: 0 });
+      }
+      this.lightData.push(column);
+    }
 
     const diagonalDistance = Math.sqrt(2);
 
@@ -171,18 +259,50 @@ export class RaycasterMap {
 
       // We now have an array with "-1" for each square with a wall, otherwise a number indicating how far it is from the light sources
       // Loop through it, and for each square with a distance less than the radius of the light, add it into that squares light list
-      for (let x = 0; x < this.mapSize; x++) {
-        for (let y = 0; y < this.mapSize; y++) {
-          let distance = mapTest[x][y];
-          if (distance >= 0 && distance < Math.ceil(light.radius + 1)) {
-            this.mapData[x][y].lights.push(light);
+      if (light.castShadows) {
+        // Only add shadowed lighting here
+        for (let x = 0; x < this.mapSize; x++) {
+          for (let y = 0; y < this.mapSize; y++) {
+            let distance = mapTest[x][y];
+            if (distance >= 0 && distance < Math.ceil(light.radius + 1)) {
+              // instead of doing this, set the vertex lighting
+              // move this lights.push into the other method when it's ready
+              this.mapData[x][y].lights.push(light);
+            }
+          }
+        }
+      } else {
+        // So we have the distance of the light including fake bouncing from the source, so now for each vertex we'll get the averages
+        // of the squares around it, and then calculate the light levels there
+        // Only for non-shadowed lights
+
+        for (let x = 0; x < this.mapSize + 1; x++) {
+          for (let y = 0; y < this.mapSize + 1; y++) {
+            // get distance from light
+            // so check squares from x - 1 and x and y-1 to y
+            // making sure not to look outside the grid
+            let countOnGrid = 0;
+            let sumDistance = 0;
+            for (let x2 = Math.max(0, x - 1); x2 <= Math.min(this.mapSize - 1, x); x2++) {
+              for (let y2 = Math.max(0, y - 1); y2 <= Math.min(this.mapSize - 1, y); y2++) {
+                if (mapTest[x2][y2] >= 0) {
+                  countOnGrid++;
+                  sumDistance += mapTest[x2][y2];
+                }
+              }
+            }
+            // Add one to distance so it doesn't have div zero and make sure if no lights at all we just add no lighting at all
+            if (countOnGrid > 0) {
+              const lightBrightness = Math.max(0, 1 - sumDistance / countOnGrid / light.radius);
+
+              this.lightData[x][y].red += light.red * lightBrightness;
+              this.lightData[x][y].green += light.green * lightBrightness;
+              this.lightData[x][y].blue += light.blue * lightBrightness;
+            }
           }
         }
       }
     }
-
-    // Get some light stats, as clearly this is the performance hog
-    // this.lightingStats();
   }
 
   private lightingStats() {
@@ -219,28 +339,27 @@ export class RaycasterMap {
     }
     let averageLightCount = totalLightCount / Math.pow(this.mapSize, 2);
     console.log(
-      'section with max lights: ' + maxLightCount + ' x: ' + maxLightX + ' y: ' + maxLightY
+      'section with max lights: ' + maxLightCount + ' x: ' + maxLightX + ' y: ' + maxLightY,
     );
     console.log(
-      'section with min lights: ' + minLightCount + ' x: ' + minLightX + ' y: ' + minLightY
+      'section with min lights: ' + minLightCount + ' x: ' + minLightX + ' y: ' + minLightY,
     );
     console.log('Average lights: ' + averageLightCount);
     let centerPoint = this.mapSize / 2;
     console.log(
       'lights at ' +
-      centerPoint +
-      ',' +
-      centerPoint +
-      ': ' +
-      this.mapData[centerPoint][centerPoint].lights.length
+        centerPoint +
+        ',' +
+        centerPoint +
+        ': ' +
+        this.mapData[centerPoint][centerPoint].lights.length,
     );
   }
 
   createSprites() {
     // just make a bunch of lamps for now
-    let spriteCount = 5;
     this.sprites = [];
-    for (let spriteIdx = 0; spriteIdx < spriteCount; spriteIdx++) {
+    for (let spriteIdx = 0; spriteIdx < this.lightSprites; spriteIdx++) {
       let clash = true;
       let tryidx = 0;
       let spriteX = 0;
@@ -278,23 +397,22 @@ export class RaycasterMap {
         red: 0.8,
         green: 1.0,
         blue: 0.8,
-        radius: 4.0,
+        radius: 5.0,
         castShadows: true,
       });
     }
   }
 
   private createLights() {
-    let lightSize = 0; // How many random dim environmental lights with no shadows
     this.lights = [];
-    for (let lightIdx = 0; lightIdx < lightSize; lightIdx++) {
+    for (let lightIdx = 0; lightIdx < this.lightMood; lightIdx++) {
       let clash = true;
       let tryidx = 0;
       let lightX = 0;
       let lightY = 0;
       let radius = 0;
 
-      let brightnessMultipler = 0.5;
+      let brightnessMultipler = 1.0;
 
       while (clash) {
         lightX = Math.floor(Math.random() * (this.mapSize - 1));
@@ -307,7 +425,7 @@ export class RaycasterMap {
           clash = false; // give up and just put it in a block who cares I mean ya know
         }
       }
-      radius = Math.random() * 1 + 1;
+      radius = Math.random() * 5 + 5;
 
       this.lights.push({
         x: lightX + 0.4 + Math.random() * 0.2,
@@ -512,5 +630,13 @@ export class RaycasterMap {
         door.isOpen = true;
       }
     });
+  }
+
+  // Using for culling stuff for drawing, gonna try and make the lighting work more efficiently
+  // by figuring out what squares aren't possible to ever get light from a raycast light source
+  isLeftOfVector(source: Coordinate, dest: Coordinate, point: Coordinate) {
+    return (
+      (dest.x - source.x) * (point.y - source.y) - (dest.y - source.y) * (point.x - source.x) > 0
+    );
   }
 }

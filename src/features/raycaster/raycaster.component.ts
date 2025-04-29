@@ -21,7 +21,7 @@ export class RaycasterComponent {
   canvas!: RaycasterCanvas;
 
   // Game settings
-  mapSize = 16;
+  mapSize = 32;
   drawMap = false;
 
   // Player position
@@ -60,7 +60,7 @@ export class RaycasterComponent {
   timeDelta = 0;
   timeNow = 0;
   timeLast = new Date().getTime();
-  timeMin = 13; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
+  timeMin = 15; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
   stillDrawing = false;
   frameTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // last ten frames time
   frameRate = 0;
@@ -121,7 +121,9 @@ export class RaycasterComponent {
               this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
               this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
               this.canvas.context.fillText(
-                'RPP: ' + this.raysCast / (this.canvas.width * this.canvas.height),
+                'RPP: ' +
+                  Math.floor((100 * this.raysCast) / (this.canvas.width * this.canvas.height)) /
+                    100.0,
                 2,
                 40,
               );
@@ -322,11 +324,11 @@ export class RaycasterComponent {
 
     // Make a ray that's a normalised length
     let rayX =
-      (Math.cos(this.playerR) * forwardAmount +
-        Math.cos(this.playerR + Math.PI / 2.0) * strafeAmount);
+      Math.cos(this.playerR) * forwardAmount +
+      Math.cos(this.playerR + Math.PI / 2.0) * strafeAmount;
     let rayY =
-      (Math.sin(this.playerR) * forwardAmount +
-        Math.sin(this.playerR + Math.PI / 2.0) * strafeAmount);
+      Math.sin(this.playerR) * forwardAmount +
+      Math.sin(this.playerR + Math.PI / 2.0) * strafeAmount;
     const rayLength = Math.sqrt(rayX * rayX + rayY * rayY);
     rayX = this.timeDelta * (rayX / rayLength) * 0.0025 * collisionMapScale;
     rayY = this.timeDelta * (rayY / rayLength) * 0.0025 * collisionMapScale;

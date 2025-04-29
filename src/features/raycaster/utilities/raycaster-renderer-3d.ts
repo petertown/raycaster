@@ -1,4 +1,3 @@
-import { RaycasterCanvas } from './raycaster-canvas';
 import { Block, BlockType, RaycasterMap, Sprite } from './raycaster-map';
 import { rotateVectorDirection } from './raycaster-math';
 import { RaycasterRays, RayResult } from './raycaster-ray';
