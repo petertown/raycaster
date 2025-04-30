@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { castRay, getRayCount, resetRayCount } from './functions-rays';
 import { Block, BlockType, Colour, RaycasterMap, Sprite } from './raycaster-map';
-import { rotateVectorDirection } from './raycaster-math';
+import { rotateVectorDirection } from './functions-math';
 import { Coordinate, RayResult } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 

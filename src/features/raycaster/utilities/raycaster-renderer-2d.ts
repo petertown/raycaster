@@ -1,7 +1,7 @@
 import { castRay } from './functions-rays';
 import { RaycasterCanvas } from './raycaster-canvas';
 import { BlockType, RaycasterMap } from './raycaster-map';
-import { mod } from './raycaster-math';
+import { mod } from './functions-math';
 import { RaycasterRays, RayResult } from './raycaster-ray';
 
 export class RaycasterRenderer2D {

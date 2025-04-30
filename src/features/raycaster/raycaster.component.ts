@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { RaycasterCanvas } from './utilities/raycaster-canvas';
 import { BlockType, RaycasterMap } from './utilities/raycaster-map';
-import { mod } from './utilities/raycaster-math';
+import { mod } from './utilities/functions-math';
 import { RaycasterRays, RayResult } from './utilities/raycaster-ray';
 import { RaycasterRenderer2D } from './utilities/raycaster-renderer-2d';
 import { RaycasterRenderer3D } from './utilities/raycaster-renderer-3d';
@@ -97,56 +97,7 @@ export class RaycasterComponent {
             this.canvas.height,
           );
 
-          if (typeof Worker !== 'undefined') {
-            // Create a new
-            this.worker = new Worker(new URL('./utilities/raycaster.worker', import.meta.url));
-
-            this.worker.onmessage = ({ data }) => {
-              // data is {raysCast: number, target: ImageData}
-              this.raysCast = data.raysCast;
-
-              // Swap to the other render target, so we can start drawing there
-              this.canvas.finishDraw(data.target);
-
-              this.canvas.screenDraw();
-
-              // Draw map on top of anything drawn
-              if (this.drawMap) {
-                this.renderer2d.drawMap(this.playerX, this.playerY, this.playerR);
-              }
-
-              // draw FPS
-              this.canvas.context.fillStyle = 'white';
-              this.canvas.context.font = '10px Arial';
-              this.canvas.context.fillText('MS: ' + this.frameRate, 2, 10);
-              this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
-              this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
-              this.canvas.context.fillText(
-                'RPP: ' +
-                  Math.floor((100 * this.raysCast) / (this.canvas.width * this.canvas.height)) /
-                    100.0,
-                2,
-                40,
-              );
-
-              const endRenderTime = new Date().getTime();
-              const renderTime = endRenderTime - this.timeLast;
-
-              // average all last 10 frames time
-              this.frameRate =
-                this.frameTimes.reduce((previousValue: number, currentValue: number) => {
-                  return previousValue + currentValue;
-                }, 0) / 10.0;
-              this.frameTimes.shift(); // remove oldest time
-              this.frameTimes.push(renderTime); // push newest time
-
-              this.stillDrawing = false;
-            };
-          } else {
-            // Web Workers are not supported in this environment.
-            // You should add a fallback so that your program still executes correctly.
-            // So we could keep the old methods and use that loop instead of the new loop for a fallback?
-          }
+          this.initWorker();
 
           resolve();
         })
@@ -154,6 +105,58 @@ export class RaycasterComponent {
           reject();
         });
     });
+  }
+
+  private initWorker() {
+    if (typeof Worker !== 'undefined') {
+      // Create a new
+      this.worker = new Worker(new URL('./utilities/raycaster.worker', import.meta.url));
+
+      this.worker.onmessage = ({ data }) => {
+        // data is {raysCast: number, target: ImageData}
+        this.raysCast = data.raysCast;
+
+        // Swap to the other render target, so we can start drawing there
+        this.canvas.finishDraw(data.target);
+
+        this.canvas.screenDraw();
+
+        // Draw map on top of anything drawn
+        if (this.drawMap) {
+          this.renderer2d.drawMap(this.playerX, this.playerY, this.playerR);
+        }
+
+        // draw FPS
+        this.canvas.context.fillStyle = 'white';
+        this.canvas.context.font = '10px Arial';
+        this.canvas.context.fillText('MS: ' + this.frameRate, 2, 10);
+        this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
+        this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
+        this.canvas.context.fillText(
+          'RPP: ' +
+            Math.floor((100 * this.raysCast) / (this.canvas.width * this.canvas.height)) / 100.0,
+          2,
+          40,
+        );
+
+        const endRenderTime = new Date().getTime();
+        const renderTime = endRenderTime - this.timeLast;
+
+        // average all last 10 frames time
+        this.frameRate =
+          this.frameTimes.reduce((previousValue: number, currentValue: number) => {
+            return previousValue + currentValue;
+          }, 0) / 10.0;
+        this.frameTimes.shift(); // remove oldest time
+        this.frameTimes.push(renderTime); // push newest time
+
+        this.stillDrawing = false;
+      };
+    } else {
+      // Web Workers are not supported in this environment.
+      // You should add a fallback so that your program still executes correctly.
+      // So we could keep the old methods and use that loop instead of the new loop for a fallback?
+    }
   }
 
   private loadTextures(): Promise<void> {

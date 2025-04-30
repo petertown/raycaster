@@ -3,7 +3,7 @@
 
 import { castRay } from './functions-rays';
 import { Block, BlockType } from './raycaster-map';
-import { rotateVectorDirection } from './raycaster-math';
+import { rotateVectorDirection } from './functions-math';
 
 export interface Coordinate {
   x: number;

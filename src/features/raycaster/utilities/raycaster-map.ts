@@ -1,5 +1,5 @@
 import { castRay } from './functions-rays';
-import { rotateVectorDirection } from './raycaster-math';
+import { rotateVectorDirection } from './functions-math';
 import { Coordinate } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
@@ -226,7 +226,7 @@ export class RaycasterMap {
       while (squaresToCheck.length > 0) {
         // get the first and remove it
         let element = squaresToCheck.shift(); // Gets first element, removing it from the list
-        if (element) {
+        if (element && element.distance < light.radius) {
           let currentDist = mapTest[element.x][element.y];
           if (currentDist > element.distance) {
             mapTest[element.x][element.y] = element.distance;
@@ -419,7 +419,7 @@ export class RaycasterMap {
           clash = false; // give up and just put it in a block who cares I mean ya know
         }
       }
-      radius = Math.random() * 5 + 5;
+      radius = Math.random() * 15 + 5;
 
       this.lights.push({
         x: lightX + 0.4 + Math.random() * 0.2,
