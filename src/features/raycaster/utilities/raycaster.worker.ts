@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
+import { Colour, rotateVectorDirection } from './functions-math';
 import { castRay, getRayCount, resetRayCount } from './functions-rays';
-import { Block, BlockType, Colour, RaycasterMap, Sprite } from './raycaster-map';
-import { rotateVectorDirection } from './functions-math';
+import { Block, BlockType, RaycasterMap, Sprite } from './raycaster-map';
 import { Coordinate, RayResult } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
@@ -20,7 +20,31 @@ let depthList: number[];
 // Either way, one at a time put these functions in different files and make sure they aren't duplicated
 // Because right now it's mostly duplicates
 
+let target: ImageData;
+let map: RaycasterMap;
+let textures: RaycasterTextures;
+let renderWidth: number;
+let renderHeight: number;
+
 addEventListener('message', ({ data }) => {
+  if (data.messageType === 'draw') {
+    postMessage(drawScene(data));
+  } else if (data.messageType === 'init') {
+    postMessage(initScene(data));
+  }
+});
+
+function initScene(data: any) {
+  target = data.target;
+  map = data.map;
+  textures = data.textures;
+  renderWidth = data.renderWidth;
+  renderHeight = data.renderHeight;
+
+  return { messageType: 'init' };
+}
+
+function drawScene(data: any) {
   // reset rays cast amount
   resetRayCount();
 
@@ -31,24 +55,24 @@ addEventListener('message', ({ data }) => {
   const screenRayList = getScreenRayVectors(
     data.aspectRatio,
     data.projectionLength,
-    data.renderWidth,
+    renderWidth,
     data.playerR,
   );
 
-  const verticalSlide = (data.renderHeight / 2.0) * data.playerV;
+  const verticalSlide = (renderHeight / 2.0) * data.playerV;
 
   // instead of doing this ... make a loop that makes a bunch of rays, and then cast each ray as a promise
   // Each ray will update the target individually, will see if editing that target data causes issues
   // But this might mean I can use more threads
 
-  for (let x = 0; x < data.renderWidth; x++) {
+  for (let x = 0; x < renderWidth; x++) {
     const screenRay = screenRayList[x];
     const rayResult = castRay(
       data.playerX,
       data.playerY,
       screenRay.x,
       screenRay.y,
-      data.map.mapData,
+      map.mapData,
       false,
     );
     depthList.push(rayResult.distance);
@@ -57,14 +81,14 @@ addEventListener('message', ({ data }) => {
       rayResult.distance,
       data.playerZ,
       verticalSlide,
-      data.renderHeight,
+      renderHeight,
     );
 
     if (rayResult.edge) {
       drawPoints.drawStart = drawPoints.drawEnd;
     }
 
-    let canvasIndice = getColorIndicesForCoord(x, 0, data.renderWidth, data.renderHeight).red;
+    let canvasIndice = getColorIndicesForCoord(x, 0, renderWidth, renderHeight).red;
 
     // look at last mapCoord to see what texture to use
     let textureId = 0;
@@ -84,9 +108,9 @@ addEventListener('message', ({ data }) => {
       canvasIndice = drawSky(
         drawPoints,
         verticalSlide,
-        data.renderHeight,
-        data.renderWidth,
-        data.target,
+        renderHeight,
+        renderWidth,
+        target,
         canvasIndice,
       );
     }
@@ -96,12 +120,12 @@ addEventListener('message', ({ data }) => {
       canvasIndice = drawWall(
         rayResult,
         drawPoints,
-        data.textures,
+        textures,
         textureId,
-        data.map,
+        map,
         mapCoordSecondLast ?? mapCoordLast,
-        data.renderWidth,
-        data.target,
+        renderWidth,
+        target,
         canvasIndice,
       );
     }
@@ -113,17 +137,17 @@ addEventListener('message', ({ data }) => {
     // then we'll want to know the distance between the two
     // This might be faster, but probably not so good for the shadows - though we could fade out the shadows in the distance?
     // We should probably first attempt to precalculate the possibility for lights for each square, so we can avoid unnecessary checks
-    if (drawPoints.drawEnd < data.renderHeight) {
+    if (drawPoints.drawEnd < renderHeight) {
       drawFloor(
         rayResult,
         drawPoints,
         data.playerZ,
         verticalSlide,
-        data.textures,
-        data.renderHeight,
-        data.renderWidth,
-        data.map,
-        data.target,
+        textures,
+        renderHeight,
+        renderWidth,
+        map,
+        target,
         canvasIndice,
       );
     }
@@ -135,19 +159,19 @@ addEventListener('message', ({ data }) => {
     data.playerY,
     data.playerR,
     data.playerZ,
-    data.map,
+    map,
     verticalSlide,
     data.projectionLength,
-    data.renderHeight,
-    data.renderWidth,
+    renderHeight,
+    renderWidth,
     data.aspectRatio,
-    data.textures,
-    data.target,
+    textures,
+    target,
   );
 
   // how many rays did we cast? Return it so that we can display those stats
-  postMessage({ raysCast: getRayCount(), target: data.target });
-});
+  return { raysCast: getRayCount(), target: target, messageType: 'draw' };
+}
 
 function drawSky(
   drawPoints: {

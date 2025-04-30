@@ -12,8 +12,7 @@ export class RaycasterCanvas {
   context!: CanvasRenderingContext2D;
 
   targetACurrent = true; // true if we are drawing to targetA, false if we are drawing to targetB
-  targetA!: ImageData; // The image data of the canvas, only need one, can draw to same one over and over (I hope)
-  targetB!: ImageData; // another target, so we can do triple buffering! worth a shot
+  target!: ImageData; // The image data of the canvas, only need one, can draw to same one over and over (I hope)
   newImageReady = false;
 
   constructor() {
@@ -34,8 +33,7 @@ export class RaycasterCanvas {
         this.clearCanvas();
 
         // save the render target (twice) with the cleared canvas!
-        this.targetA = this.context.getImageData(0, 0, this.width, this.height);
-        this.targetB = this.context.getImageData(0, 0, this.width, this.height);
+        this.target = this.context.getImageData(0, 0, this.width, this.height);
       }
     }
   }
@@ -73,21 +71,9 @@ export class RaycasterCanvas {
     }
   }
 
-  getTarget() {
-    if (this.targetACurrent) {
-      return this.targetA;
-    } else {
-      return this.targetB;
-    }
-  }
-
   // Call at end to put the render target on the canvas
   public finishDraw(updatedTarget: ImageData) {
-    if (this.targetACurrent) {
-      this.targetA = updatedTarget;
-    } else {
-      this.targetB = updatedTarget;
-    }
+    this.target = updatedTarget;
     this.targetACurrent = !this.targetACurrent;
     this.newImageReady = true;
   }
@@ -95,11 +81,7 @@ export class RaycasterCanvas {
   // draw the canvas that's not being drawn to right now
   public screenDraw() {
     if (this.newImageReady) {
-      if (this.targetACurrent) {
-        this.context.putImageData(this.targetB, 0, 0);
-      } else {
-        this.context.putImageData(this.targetA, 0, 0);
-      }
+      this.context.putImageData(this.target, 0, 0);
     }
   }
 

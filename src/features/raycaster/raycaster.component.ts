@@ -22,7 +22,7 @@ export class RaycasterComponent {
   canvas!: RaycasterCanvas;
 
   // Game settings
-  mapSize = 64;
+  mapSize = 256;
   drawMap = false;
 
   // Player position
@@ -62,7 +62,7 @@ export class RaycasterComponent {
   timeNow = 0;
   timeLast = new Date().getTime();
   timeMin = 13; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
-  stillDrawing = false;
+  stillDrawing = true;
   frameTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // last ten frames time
   frameRate = 0;
   raysCast = 0;
@@ -108,50 +108,66 @@ export class RaycasterComponent {
   }
 
   private initWorker() {
+    // start with "stillDrawing" true so it wont try and draw until worker is free
+    this.stillDrawing = true;
+
     if (typeof Worker !== 'undefined') {
       // Create a new
       this.worker = new Worker(new URL('./utilities/raycaster.worker', import.meta.url));
 
       this.worker.onmessage = ({ data }) => {
-        // data is {raysCast: number, target: ImageData}
-        this.raysCast = data.raysCast;
+        if (data.messageType === 'draw') {
+          // data is {raysCast: number, target: ImageData}
+          this.raysCast = data.raysCast;
 
-        // Swap to the other render target, so we can start drawing there
-        this.canvas.finishDraw(data.target);
+          // Swap to the other render target, so we can start drawing there
+          this.canvas.finishDraw(data.target);
 
-        this.canvas.screenDraw();
+          this.canvas.screenDraw();
 
-        // Draw map on top of anything drawn
-        if (this.drawMap) {
-          this.renderer2d.drawMap(this.playerX, this.playerY, this.playerR);
+          // Draw map on top of anything drawn
+          if (this.drawMap) {
+            this.renderer2d.drawMap(this.playerX, this.playerY, this.playerR);
+          }
+
+          // draw FPS
+          this.canvas.context.fillStyle = 'white';
+          this.canvas.context.font = '10px Arial';
+          this.canvas.context.fillText('MS: ' + this.frameRate, 2, 10);
+          this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
+          this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
+          this.canvas.context.fillText(
+            'RPP: ' +
+              Math.floor((100 * this.raysCast) / (this.canvas.width * this.canvas.height)) / 100.0,
+            2,
+            40,
+          );
+
+          const endRenderTime = new Date().getTime();
+          const renderTime = endRenderTime - this.timeLast;
+
+          // average all last 10 frames time
+          this.frameRate =
+            this.frameTimes.reduce((previousValue: number, currentValue: number) => {
+              return previousValue + currentValue;
+            }, 0) / 10.0;
+          this.frameTimes.shift(); // remove oldest time
+          this.frameTimes.push(renderTime); // push newest time
+        } else if (data.messageType === 'init') {
+          // Probably don't need anything here
         }
-
-        // draw FPS
-        this.canvas.context.fillStyle = 'white';
-        this.canvas.context.font = '10px Arial';
-        this.canvas.context.fillText('MS: ' + this.frameRate, 2, 10);
-        this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
-        this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
-        this.canvas.context.fillText(
-          'RPP: ' +
-            Math.floor((100 * this.raysCast) / (this.canvas.width * this.canvas.height)) / 100.0,
-          2,
-          40,
-        );
-
-        const endRenderTime = new Date().getTime();
-        const renderTime = endRenderTime - this.timeLast;
-
-        // average all last 10 frames time
-        this.frameRate =
-          this.frameTimes.reduce((previousValue: number, currentValue: number) => {
-            return previousValue + currentValue;
-          }, 0) / 10.0;
-        this.frameTimes.shift(); // remove oldest time
-        this.frameTimes.push(renderTime); // push newest time
-
         this.stillDrawing = false;
       };
+
+      // init the worker
+      this.worker.postMessage({
+        messageType: 'init',
+        map: this.map,
+        textures: this.textures,
+        target: this.canvas.target,
+        renderWidth: this.canvas.width,
+        renderHeight: this.canvas.height,
+      });
     } else {
       // Web Workers are not supported in this environment.
       // You should add a fallback so that your program still executes correctly.
@@ -173,6 +189,13 @@ export class RaycasterComponent {
         this.textures.loadTexture('tilefloor', '/textures/floors/texture_floor_tile.png', 64, 64),
         this.textures.loadTexture('grassfloor', '/textures/floors/texture_floor_grass.png', 64, 64),
         this.textures.loadTexture('light', '/textures/sprites/light.png', 64, 64),
+        // Slowely replace those with some proper textures
+        this.textures.loadTexture('FLATSTONES', '/textures/Rocks/FLATSTONES.png', 32, 32),
+        this.textures.loadTexture('DIRT', '/textures/Rocks/DIRT.png', 32, 32),
+        this.textures.loadTexture('GRAYROCKS', '/textures/Rocks/GRAYROCKS.png', 32, 32),
+        this.textures.loadTexture('BRICKS', '/textures/BuildingTextures/BRICKS.png', 32, 32),
+        this.textures.loadTexture('DUNGEONBRICKS', '/textures/Bricks/DUNGEONBRICKS.png', 32, 32),
+        this.textures.loadTexture('DUNGEONCELL', '/textures/Bricks/DUNGEONCELL.png', 32, 32),
       ])
         .then(() => {
           resolve();
@@ -266,10 +289,9 @@ export class RaycasterComponent {
       this.canvas.startDraw(); // fix canvas size and ratio
 
       // Send the worker off to do the drawing
+      // Also, send the updates to the map (not the entire map)
       this.worker.postMessage({
-        map: this.map,
-        textures: this.textures,
-        target: this.canvas.getTarget(),
+        messageType: 'draw',
         playerX: this.playerX,
         playerY: this.playerY,
         playerZ: this.playerZ,
@@ -277,8 +299,6 @@ export class RaycasterComponent {
         playerV: this.playerV,
         aspectRatio: this.canvas.aspectRatio,
         projectionLength: this.canvas.projectionLength,
-        renderWidth: this.canvas.width,
-        renderHeight: this.canvas.height,
       });
     }
   };

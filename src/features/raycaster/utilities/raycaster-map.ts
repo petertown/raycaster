@@ -1,5 +1,5 @@
 import { castRay } from './functions-rays';
-import { rotateVectorDirection } from './functions-math';
+import { Colour, normaliseLightColour, rotateVectorDirection } from './functions-math';
 import { Coordinate } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
@@ -40,14 +40,6 @@ export interface Light {
   castShadows: boolean;
 }
 
-// Each vertex of the map should have an ambient light colour, to simulate light bounding around the place
-// This is a TODO we don't even have a list for it
-export interface Colour {
-  red: number;
-  green: number;
-  blue: number;
-}
-
 export interface Sprite {
   x: number;
   y: number;
@@ -80,8 +72,8 @@ export class RaycasterMap {
   textures: RaycasterTextures;
 
   // settings for map building TEMP until it makes a proper map
-  lightSprites = 10;
-  lightMood = 20;
+  lightSprites = 20;
+  lightMood = 40;
 
   constructor(mapSize: number, textures: RaycasterTextures) {
     this.mapSize = mapSize;
@@ -89,14 +81,10 @@ export class RaycasterMap {
 
     // Populate the map
     this.buildMap();
-
-    // randomly make lights in empty blocks (temp until sprites work)
-    // Now that sprites work and we make lights from those, we probably want to make am ambient light level for every vertex
-    // That way don't need to do any "checking" of all those lights and adding them together - can do it at the start
     this.createLights();
-
-    // Make sprites (lamps etc)
     this.createSprites();
+
+    // this.buildMapRooms();
 
     // Now make vertex lighting that's baked in and doesn't change
     this.processBakedLighting();
@@ -110,12 +98,7 @@ export class RaycasterMap {
 
   processDynamicLighting() {
     // For each light, cast a ray to every single vertex on the map, plus every vertex slightly shifted to the left and to the right
-
-    // I think the method that that woman made is probably the best
-    // a ray for EVERY single vertex, But limit in it's length to the radius of the light
-    // plus rays for just left and right of each vertex
-    // For every one of the squares that we intersect with, that one will need this light
-    // sseems simpler in every way
+    // For every one of the squares that we cross we add the light in
 
     // So make the light ray to the light, cast three rays, one normal, one slightly to the left, one slightly to the right
     const rayOffsetAngle = 0.0001;
@@ -124,6 +107,8 @@ export class RaycasterMap {
     // can use the bilinear interpolation to work out the approx distance which will be accurate enough but MUCH faster
     // So some sort of container that holds the light source and has these details on top of it
     // like { light, shadows, tlbright, trbright, blbright, brbright}
+    // Or, add this into the baked lighting (so make sure to run this second!)
+    // But only if I can work out if the light is done or not
 
     this.lights
       .filter((light) => {
@@ -145,6 +130,9 @@ export class RaycasterMap {
           }
           hitByRay.push(columnHit);
         }
+
+        // The light is definitely in the map coord we made it in
+        hitByRay[Math.floor(xa)][Math.floor(ya)] = true;
 
         // try and hit every single vertex
         for (let xVert = 0; xVert < this.mapSize + 1; xVert++) {
@@ -406,7 +394,7 @@ export class RaycasterMap {
       let lightY = 0;
       let radius = 0;
 
-      let brightnessMultipler = 1.0;
+      let brightnessMultipler = 0.5;
 
       while (clash) {
         lightX = Math.floor(Math.random() * (this.mapSize - 1));
@@ -419,20 +407,162 @@ export class RaycasterMap {
           clash = false; // give up and just put it in a block who cares I mean ya know
         }
       }
-      radius = Math.random() * 15 + 5;
+      radius = Math.random() * 25 + 25;
+
+      let lightColour = normaliseLightColour({
+        red: Math.random(),
+        green: Math.random(),
+        blue: Math.random(),
+      });
 
       this.lights.push({
         x: lightX + 0.4 + Math.random() * 0.2,
         y: lightY + 0.4 + Math.random() * 0.2,
         mapX: lightX,
         mapY: lightY,
-        red: Math.random() * brightnessMultipler,
-        green: Math.random() * brightnessMultipler,
-        blue: Math.random() * brightnessMultipler,
+        red: lightColour.red * brightnessMultipler,
+        green: lightColour.green * brightnessMultipler,
+        blue: lightColour.blue * brightnessMultipler,
         radius: radius,
         castShadows: false,
       });
     }
+  }
+
+  private buildMapRooms() {
+    // Make a totally full map and open up with some rooms
+    this.mapData = [];
+    this.doors = [];
+    this.lights = [];
+    this.sprites = [];
+
+    for (let x = 0; x < this.mapSize; x++) {
+      const row: Block[] = [];
+      for (let y = 0; y < this.mapSize; y++) {
+        let newBlock: Block = {
+          x: x,
+          y: y,
+          type: BlockType.Wall,
+          open: 0.0,
+          wallTexture: this.textures.getTextureId('GRAYROCKS'),
+          floorTexture: 0,
+          innerWallTexture: 0,
+          lights: [],
+        };
+        row.push(newBlock);
+      }
+
+      this.mapData.push(row);
+    }
+
+    // For the center of the map point
+    const center = Math.round(this.mapSize / 2);
+
+    // Make a bunch of random rooms, making sure they don't clash with each other, and join them with doors as we make them!
+    // So each room needs to have a potential door on each side - and so for each room it'll attempt to put a room on each side
+    // So every time we make a room, put an entry on the list for each side that hasn't been made yet
+    // Then go through, take the first, try and make it, if it doesn't work, put it on the end of the list
+    // Gonna get complicated but worth a shot
+    let roomAttempts = 0;
+    let roomMaxAttempts = 100; // If we can't make a room after this many tries, give up!
+
+    // perhaps it needs random floor textures too
+    let types = [
+      {
+        wallTexture: this.textures.getTextureId('DUNGEONBRICKS'),
+        floorTexture: this.textures.getTextureId('FLATSTONES'),
+        decoTexture1: this.textures.getTextureId('DUNGEONCELL'),
+        decoTexture2: this.textures.getTextureId('DUNGEONCELL'),
+        lightSprite: this.textures.getTextureId('light'),
+        lightColour: { red: 0.8, green: 1.0, blue: 0.8 },
+      },
+    ];
+
+    // Top left and bottom right, and a type I can use later (I want base wall, plus two types of decoration walls)
+    // Also type should determine what decorations go into that room
+    let rooms: { tlx: number; tly: number; brx: number; bry: number; type: number }[] = [];
+    // First make a room that's somewhere in the middle, so our player can go there
+    // Width should include the walls
+    let roomWidth = Math.round((Math.random() * 4 + 4) / 2);
+    let roomHeight = Math.round((Math.random() * 4 + 4) / 2);
+    rooms.push({
+      tlx: center - roomWidth,
+      tly: center - roomHeight,
+      brx: center + roomWidth,
+      bry: center + roomHeight,
+      type: 0, // Future
+    });
+
+    // Set all the rooms
+    for (let room of rooms) {
+      // based on the sprite texture
+      const roomType = types[room.type];
+
+      for (let x = room.tlx; x <= room.brx; x++) {
+        for (let y = room.tly; y <= room.bry; y++) {
+          let newBlock: Block;
+          // is it the outside wall?
+          if (x === room.tlx || x === room.brx || y === room.tly || y === room.bry) {
+            let wallTexture = roomType.wallTexture;
+            if (Math.random() > 0.8) {
+              // todo is to not make the special one when we 
+              wallTexture = Math.random() > 0.5 ? roomType.decoTexture1 : roomType.decoTexture2;
+            }
+
+            newBlock = {
+              x: x,
+              y: y,
+              type: BlockType.Wall,
+              open: 0.0,
+              wallTexture: wallTexture,
+              floorTexture: 0,
+              innerWallTexture: 0,
+              lights: [],
+            };
+          } else {
+            newBlock = {
+              x: x,
+              y: y,
+              type: BlockType.Empty,
+              open: 0.0,
+              wallTexture: 0,
+              floorTexture: roomType.floorTexture,
+              innerWallTexture: 0,
+              lights: [],
+            };
+          }
+
+          this.mapData[x][y] = newBlock;
+        }
+      }
+
+      let centerX = Math.floor((room.tlx + room.brx) / 2.0) + 0.5;
+      let centerY = Math.floor((room.tly + room.bry) / 2.0) + 0.5;
+
+      // make a sprite in the middle of the room
+      this.sprites.push({
+        x: centerX,
+        y: centerY,
+        texture: roomType.lightSprite,
+      });
+
+      // also push an appropriate light at the same time we make these lamps
+      this.lights.push({
+        x: centerX,
+        y: centerY,
+        mapX: Math.floor(centerX),
+        mapY: Math.floor(centerY),
+        red: roomType.lightColour.red,
+        green: roomType.lightColour.green,
+        blue: roomType.lightColour.blue,
+        radius: 5.0,
+        castShadows: true,
+      });
+    }
+
+    // Next: Make some cave ins and destroy some of the walls, just a bit, to make it more interesting
+
+    // Also: Need to make a way down and maybe a way up, depending on what floor we are generating
   }
 
   private buildMap() {
@@ -624,13 +754,5 @@ export class RaycasterMap {
         door.isOpen = true;
       }
     });
-  }
-
-  // Using for culling stuff for drawing, gonna try and make the lighting work more efficiently
-  // by figuring out what squares aren't possible to ever get light from a raycast light source
-  isLeftOfVector(source: Coordinate, dest: Coordinate, point: Coordinate) {
-    return (
-      (dest.x - source.x) * (point.y - source.y) - (dest.y - source.y) * (point.x - source.x) > 0
-    );
   }
 }
