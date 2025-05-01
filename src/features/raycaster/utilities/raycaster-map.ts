@@ -1,5 +1,5 @@
-import { castRay } from './functions-rays';
 import { Colour, normaliseLightColour, rotateVectorDirection } from './functions-math';
+import { castRay } from './functions-rays';
 import { Coordinate } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
@@ -58,6 +58,7 @@ export class RaycasterMap {
   // Always do [x] [y] consistently
   mapSize: number;
   mapData!: Block[][];
+  updatedMapData: Block[] = []; // Use this to send to the worker to update just what needs updating
 
   lights!: Light[];
   lightData!: Colour[][];
@@ -72,8 +73,11 @@ export class RaycasterMap {
   textures: RaycasterTextures;
 
   // settings for map building TEMP until it makes a proper map
-  lightSprites = 20;
-  lightMood = 40;
+  lightSprites = 40;
+  lightMood = 5;
+  overrideSprites = false;
+  overrideSpriteName = 'white3';
+  noDoors = false;
 
   constructor(mapSize: number, textures: RaycasterTextures) {
     this.mapSize = mapSize;
@@ -347,9 +351,12 @@ export class RaycasterMap {
       let spriteX = 0;
       let spriteY = 0;
 
+      let makeLight = Math.random() > 0.75;
+
       if (spriteIdx === 0) {
         spriteX = Math.floor(this.mapSize / 2.0);
         spriteY = Math.floor(this.mapSize / 2.0);
+        makeLight = true;
       } else {
         while (clash) {
           spriteX = Math.floor(Math.random() * (this.mapSize - 1));
@@ -364,24 +371,36 @@ export class RaycasterMap {
         }
       }
 
-      this.sprites.push({
-        x: spriteX + 0.5,
-        y: spriteY + 0.5,
-        texture: this.textures.getTextureId('light'),
-      });
+      if (makeLight) {
+        this.sprites.push({
+          x: spriteX + 0.5,
+          y: spriteY + 0.5,
+          texture: this.overrideSprites
+            ? this.textures.getTextureId(this.overrideSpriteName)
+            : this.textures.getTextureId('light'),
+        });
 
-      // also push an appropriate light at the same time we make these lamps
-      this.lights.push({
-        x: spriteX + 0.5,
-        y: spriteY + 0.5,
-        mapX: spriteX,
-        mapY: spriteY,
-        red: 0.8,
-        green: 1.0,
-        blue: 0.8,
-        radius: 5.0,
-        castShadows: true,
-      });
+        // also push an appropriate light at the same time we make these lamps
+        this.lights.push({
+          x: spriteX + 0.5,
+          y: spriteY + 0.5,
+          mapX: spriteX,
+          mapY: spriteY,
+          red: 0.8,
+          green: 1.0,
+          blue: 0.8,
+          radius: 5.0,
+          castShadows: true,
+        });
+      } else {
+        this.sprites.push({
+          x: spriteX + 0.5,
+          y: spriteY + 0.5,
+          texture: this.overrideSprites
+            ? this.textures.getTextureId(this.overrideSpriteName)
+            : this.textures.getTextureId('goblin'),
+        });
+      }
     }
   }
 
@@ -407,7 +426,7 @@ export class RaycasterMap {
           clash = false; // give up and just put it in a block who cares I mean ya know
         }
       }
-      radius = Math.random() * 25 + 25;
+      radius = (Math.random() + 1) * this.mapSize / 4.0;
 
       let lightColour = normaliseLightColour({
         red: Math.random(),
@@ -505,7 +524,7 @@ export class RaycasterMap {
           if (x === room.tlx || x === room.brx || y === room.tly || y === room.bry) {
             let wallTexture = roomType.wallTexture;
             if (Math.random() > 0.8) {
-              // todo is to not make the special one when we 
+              // todo is to not make the special one when we
               wallTexture = Math.random() > 0.5 ? roomType.decoTexture1 : roomType.decoTexture2;
             }
 
@@ -592,9 +611,9 @@ export class RaycasterMap {
         if (distance < 3) {
           type = BlockType.Empty;
           if (Math.abs(x - halfSize) === 2 && Math.abs(y - halfSize) === 0) {
-            type = BlockType.YDoor;
+            type = this.noDoors ? BlockType.Empty : BlockType.YDoor;
           } else if (Math.abs(x - halfSize) === 0 && Math.abs(y - halfSize) === 2) {
-            type = BlockType.XDoor;
+            type = this.noDoors ? BlockType.Empty : BlockType.XDoor;
           } else if (Math.abs(x - halfSize) === 2 || Math.abs(y - halfSize) === 2) {
             type = BlockType.Wall;
           }
@@ -738,6 +757,8 @@ export class RaycasterMap {
 
   updateDoors(timeDelta: number, mapX: number, mapY: number) {
     this.doors.forEach((door) => {
+      let currentOpenState = door.block.open;
+
       if (door.isOpen) {
         door.block.open = Math.min(1, door.block.open + this.doorSpeed * timeDelta);
         door.timeOpened += timeDelta;
@@ -753,6 +774,16 @@ export class RaycasterMap {
         door.timeOpened = 0;
         door.isOpen = true;
       }
+
+      if (door.block.open !== currentOpenState) {
+        this.updatedMapData.push(door.block);
+      }
     });
+  }
+
+  getUpdatedMapData() {
+    let updatedCopy = this.updatedMapData;
+    this.updatedMapData = [];
+    return updatedCopy;
   }
 }

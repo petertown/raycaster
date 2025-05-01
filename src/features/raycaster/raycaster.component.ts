@@ -1,13 +1,13 @@
 import { Component } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
+import { mod } from './utilities/functions-math';
+import { castRay } from './utilities/functions-rays';
 import { RaycasterCanvas } from './utilities/raycaster-canvas';
 import { BlockType, RaycasterMap } from './utilities/raycaster-map';
-import { mod } from './utilities/functions-math';
 import { RaycasterRays, RayResult } from './utilities/raycaster-ray';
 import { RaycasterRenderer2D } from './utilities/raycaster-renderer-2d';
 import { RaycasterRenderer3D } from './utilities/raycaster-renderer-3d';
 import { RaycasterTextures } from './utilities/raycaster-textures';
-import { castRay } from './utilities/functions-rays';
 
 @Component({
   selector: 'app-raycaster',
@@ -22,7 +22,7 @@ export class RaycasterComponent {
   canvas!: RaycasterCanvas;
 
   // Game settings
-  mapSize = 256;
+  mapSize = 32;
   drawMap = false;
 
   // Player position
@@ -31,6 +31,17 @@ export class RaycasterComponent {
   playerZ = 0.6;
   playerR = 0.0;
   playerV = 0.0;
+  playerXS = 0.0;
+  playerYS = 0.0;
+  playerSpeed = 0.0;
+
+  // Render position (Based on player)
+  renderX = 0.5 + this.mapSize / 2.0;
+  renderY = 0.5 + this.mapSize / 2.0;
+  renderZ = 0.5;
+  renderR = 0.0;
+  renderV = 0.0;
+  renderWalkTime = 0.0;
 
   // Controls
   mouseX = 0;
@@ -41,6 +52,9 @@ export class RaycasterComponent {
   keyright = false;
   keystrafeleft = false;
   keystraferight = false;
+  forwardSpeed = 0.0;
+  strafeSpeed = 0.0;
+  turnSpeed = 0.0;
 
   // Components
   // Rendering target
@@ -189,6 +203,10 @@ export class RaycasterComponent {
         this.textures.loadTexture('tilefloor', '/textures/floors/texture_floor_tile.png', 64, 64),
         this.textures.loadTexture('grassfloor', '/textures/floors/texture_floor_grass.png', 64, 64),
         this.textures.loadTexture('light', '/textures/sprites/light.png', 64, 64),
+        this.textures.loadTexture('goblin', '/textures/sprites/goblin.png', 64, 64),
+        this.textures.loadTexture('white1', '/textures/sprites/white1.png', 64, 64),
+        this.textures.loadTexture('white2', '/textures/sprites/white2.png', 64, 64),
+        this.textures.loadTexture('white3', '/textures/sprites/white3.png', 64, 64),
         // Slowely replace those with some proper textures
         this.textures.loadTexture('FLATSTONES', '/textures/Rocks/FLATSTONES.png', 32, 32),
         this.textures.loadTexture('DIRT', '/textures/Rocks/DIRT.png', 32, 32),
@@ -292,47 +310,50 @@ export class RaycasterComponent {
       // Also, send the updates to the map (not the entire map)
       this.worker.postMessage({
         messageType: 'draw',
-        playerX: this.playerX,
-        playerY: this.playerY,
-        playerZ: this.playerZ,
-        playerR: this.playerR,
-        playerV: this.playerV,
+        playerX: this.renderX,
+        playerY: this.renderY,
+        playerZ: this.renderZ,
+        playerR: this.renderR,
+        playerV: this.renderV,
         aspectRatio: this.canvas.aspectRatio,
         projectionLength: this.canvas.projectionLength,
+        updatedMapData: this.map.getUpdatedMapData(),
       });
     }
   };
 
   handleInput() {
     // Keyboard movement
-    let forwardSpeed = 0;
-    let turnSpeed = 0;
-    let strafeSpeed = 0;
+    this.forwardSpeed = 0;
+    this.turnSpeed = 0;
+    this.strafeSpeed = 0;
     if (this.keyup) {
-      forwardSpeed += 1;
+      this.forwardSpeed += 1;
     }
     if (this.keydown) {
-      forwardSpeed -= 1;
+      this.forwardSpeed -= 1;
     }
     if (this.keyright) {
-      turnSpeed += 1;
+      this.turnSpeed += 1;
     }
     if (this.keyleft) {
-      turnSpeed -= 1;
+      this.turnSpeed -= 1;
     }
     if (this.keystrafeleft) {
-      strafeSpeed -= 1;
+      this.strafeSpeed -= 1;
     }
     if (this.keystraferight) {
-      strafeSpeed += 1;
+      this.strafeSpeed += 1;
     }
 
-    this.playerR += turnSpeed * 0.0025 * this.timeDelta;
-    this.playerV = -this.mouseY;
+    let verticalLook = true;
 
-    if (forwardSpeed !== 0 || strafeSpeed !== 0) {
-      this.movePlayer(forwardSpeed, strafeSpeed);
-    }
+    this.playerR += this.turnSpeed * 0.0025 * this.timeDelta;
+    this.playerV = verticalLook ? -this.mouseY : 0.0;
+
+    // if (this.forwardSpeed !== 0 || this.strafeSpeed !== 0) {
+      this.movePlayer(this.forwardSpeed, this.strafeSpeed);
+    // }
   }
 
   // Use the rays to figure out how far the player should move
@@ -346,8 +367,25 @@ export class RaycasterComponent {
     const forwardAmount = forwardSpeed;
     const strafeAmount = strafeSpeed;
 
+    // Adjust the players speed down for friction
+    const friction = 0.9;
+    const acceleration = 0.00125;
+    this.playerXS *= friction;
+    this.playerYS *= friction;
+    // Add any new speed the player wants
+    this.playerXS +=
+      this.timeDelta *
+      acceleration *
+      (Math.cos(this.playerR) * forwardAmount +
+        Math.cos(this.playerR + Math.PI / 2.0) * strafeAmount);
+    this.playerYS +=
+      this.timeDelta *
+      acceleration *
+      (Math.sin(this.playerR) * forwardAmount +
+        Math.sin(this.playerR + Math.PI / 2.0) * strafeAmount);
+
     // Make a ray that's a normalised length
-    let rayX =
+    /* let rayX =
       Math.cos(this.playerR) * forwardAmount +
       Math.cos(this.playerR + Math.PI / 2.0) * strafeAmount;
     let rayY =
@@ -355,7 +393,12 @@ export class RaycasterComponent {
       Math.sin(this.playerR + Math.PI / 2.0) * strafeAmount;
     const rayLength = Math.sqrt(rayX * rayX + rayY * rayY);
     rayX = this.timeDelta * (rayX / rayLength) * 0.0025 * collisionMapScale;
-    rayY = this.timeDelta * (rayY / rayLength) * 0.0025 * collisionMapScale;
+    rayY = this.timeDelta * (rayY / rayLength) * 0.0025 * collisionMapScale; */
+
+    let rayX = this.playerXS;
+    let rayY = this.playerYS;
+    this.playerSpeed = Math.sqrt(rayX * rayX + rayY * rayY);
+    this.renderWalkTime += this.playerSpeed;
 
     let colX = collisionMapScale * (1 + mod(this.playerX, 1));
     let colY = collisionMapScale * (1 + mod(this.playerY, 1));
@@ -379,11 +422,21 @@ export class RaycasterComponent {
 
     this.playerX += differenceX / 4.0;
     this.playerY += differenceY / 4.0;
+
+    this.playerXS = differenceX;
+    this.playerYS = differenceY;
   }
 
   private gameLogic() {
     // Logic of doors
     this.map.updateDoors(this.timeDelta, Math.floor(this.playerX), Math.floor(this.playerY));
+
+    // Do walking animation
+    this.renderX = this.playerX;
+    this.renderY = this.playerY;
+    this.renderZ = this.playerZ + Math.cos(this.renderWalkTime) * 0.2 * this.playerSpeed;
+    this.renderR = this.playerR;
+    this.renderV = this.playerV;
   }
 
   doAction() {

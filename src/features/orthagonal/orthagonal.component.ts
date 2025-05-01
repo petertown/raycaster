@@ -53,8 +53,8 @@ interface Light {
 })
 export class OrthagonalComponent {
   // Settings
-  protected canvasWidth = 640;
-  protected canvasHeight = 400;
+  protected canvasWidth = 320;
+  protected canvasHeight = 200;
   private playerHeight = 0.5;
   private hovertankShearing = 0.0;
   private monoLit = false;
@@ -76,12 +76,12 @@ export class OrthagonalComponent {
   // Config
   formPerspective = new FormControl(true, { nonNullable: true });
   formPerspectiveSkew = new FormControl(false, { nonNullable: true });
-  formWallTextures = new FormControl(true, { nonNullable: true });
-  formFloorTextures = new FormControl(true, { nonNullable: true });
-  formSkyTexture = new FormControl(true, { nonNullable: true });
+  formWallTextures = new FormControl(false, { nonNullable: true });
+  formFloorTextures = new FormControl(false, { nonNullable: true });
+  formSkyTexture = new FormControl(false, { nonNullable: true });
   formVerticalLook = new FormControl(false, { nonNullable: true });
   formWallHeight = new FormControl(1, { nonNullable: true });
-  formLighting = new FormControl(true, { nonNullable: true });
+  formLighting = new FormControl(false, { nonNullable: true });
   formHovertank = new FormControl(false, { nonNullable: true });
 
   // controls
@@ -410,7 +410,7 @@ export class OrthagonalComponent {
     this.playerY += Math.cos(this.renderAngle) * forwardSpeed * 0.0025 * this.timeDelta;
 
     if (this.formHovertank.value) {
-      this.hovertankShearing = 0.1;
+      this.hovertankShearing = 0.05;
       this.timeMin = 45;
     } else {
       this.hovertankShearing = 0.0;
@@ -499,6 +499,8 @@ export class OrthagonalComponent {
     let xd: number;
     let yd: number;
 
+    let rayDiff = 0;
+
     if (this.formPerspective.value) {
       // Work out the ray based on the projection
       const xdBase = this.projectionWidth * ((x - this.canvasWidth / 2.0) / this.canvasWidth);
@@ -513,12 +515,15 @@ export class OrthagonalComponent {
       // figure out the angle of the ray in radians - old method can be used to demonstrate the problems
       let fov = Math.PI * this.projectionWidth * 0.25;
 
+      rayDiff = fov * ((x - this.canvasWidth / 2.0) / this.canvasWidth);
+
       const angleBase =
         -this.renderAngle + Math.PI / 2 - fov * ((x - this.canvasWidth / 2.0) / this.canvasWidth);
 
       // And now the actual vector of the array (starting at player position)
-      xd = Math.cos(angleBase);
-      yd = Math.sin(angleBase);
+      xd = Math.cos(angleBase); //  / Math.cos(rayDiff);
+      yd = Math.sin(angleBase); // / Math.cos(rayDiff);
+      // uncomment that to demo the compressed edges and stretched center
     }
 
     // get the real ray length
