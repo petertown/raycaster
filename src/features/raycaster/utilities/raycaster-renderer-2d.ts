@@ -60,7 +60,7 @@ export class RaycasterRenderer2D {
     if (this.drawLights) {
       for (let light of this.map.lights) {
         let colour = 'green';
-        this.drawCircle(light.x, light.y, 0.1, drawArea, colour);
+        this.drawCircle(light.centerX, light.centerY, 0.1, drawArea, colour);
       }
     }
 
@@ -136,10 +136,10 @@ export class RaycasterRenderer2D {
     // Light rays
     if (this.drawLights) {
       for (let light of this.map.lights) {
-        xd = xHit - light.x;
-        yd = yHit - light.y;
-        xa = light.x;
-        ya = light.y;
+        xd = xHit - light.centerX;
+        yd = yHit - light.centerY;
+        xa = light.centerX;
+        ya = light.centerY;
 
         rayResult = castRay(xa, ya, xd, yd, this.map.mapData, false, false);
         colour = 'green';

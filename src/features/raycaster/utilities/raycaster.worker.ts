@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { Colour, rotateVectorDirection } from './functions-math';
 import { castRay, getRayCount, resetRayCount } from './functions-rays';
-import { Block, BlockType, RaycasterMap, Sprite } from './raycaster-map';
+import { Block, BlockType, Light, RaycasterMap, Sprite } from './raycaster-map';
 import { Coordinate, RayResult } from './raycaster-ray';
 import { RaycasterTextures } from './raycaster-textures';
 
@@ -66,7 +66,7 @@ function drawScene(data: any) {
   resetRayCount();
 
   // Update the map with the updated data
-  updateMap(data.updatedMapData);
+  updateMap(data.updatedMapData, data.updatedLightData);
 
   // list of depths
   depthList = [];
@@ -636,10 +636,10 @@ function getLightingAt(
   const midCol = blendColours(topCol, bottomCol, ypc1, ypc2);
 
   for (let light of mapCoord.lights) {
-    const xd = x - light.x + (offsetRay ? 0.0001 : 0);
-    const yd = y - light.y + (offsetRay ? 0.0001 : 0);
-    const xa = light.x;
-    const ya = light.y;
+    const xd = x - light.adjustedX + (offsetRay ? 0.0001 : 0);
+    const yd = y - light.adjustedY + (offsetRay ? 0.0001 : 0);
+    const xa = light.adjustedX;
+    const ya = light.adjustedY;
 
     // Squared distance
     let distance = xd * xd + yd * yd;
@@ -681,8 +681,16 @@ function blendColours(
     blue: colour1.blue * percent1 + colour2.blue * percent2,
   };
 }
-function updateMap(updatedMapData: Block[]) {
+function updateMap(updatedMapData: Block[], updatedLightData: Light[]) {
   updatedMapData.forEach((block) => {
-    map.mapData[block.x][block.y] = block;
+    map.mapData[block.x][block.y].open = block.open;
+  });
+
+  updatedLightData.forEach((light) => {
+    map.lights[light.lightIndex].adjustedX = light.adjustedX;
+    map.lights[light.lightIndex].adjustedY = light.adjustedY;
+    map.lights[light.lightIndex].red = light.red;
+    map.lights[light.lightIndex].green = light.green;
+    map.lights[light.lightIndex].blue = light.blue;
   });
 }

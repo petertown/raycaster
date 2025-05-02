@@ -321,6 +321,7 @@ export class RaycasterComponent {
       aspectRatio: this.canvas.aspectRatio,
       projectionLength: this.canvas.projectionLength,
       updatedMapData: this.map.getUpdatedMapData(),
+      updatedLightData: this.map.getUpdatedLightData(),
     });
   };
 
@@ -440,6 +441,7 @@ export class RaycasterComponent {
   private gameLogic() {
     // Logic of doors
     this.map.updateDoors(this.timeDelta, Math.floor(this.playerX), Math.floor(this.playerY));
+    this.map.updateLights();
 
     // Do walking animation
     this.renderX = this.playerX;

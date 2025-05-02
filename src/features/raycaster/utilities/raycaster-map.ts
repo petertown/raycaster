@@ -33,11 +33,16 @@ export enum LightType {
 
 export interface Light {
   type: LightType;
-  x: number;
-  y: number;
+  centerX: number;
+  centerY: number;
+  adjustedX: number;
+  adjustedY: number;
   mapX: number;
   mapY: number;
   // Lights are multipliers, as in 0.0 - 1.0
+  baseRed: number;
+  baseGreen: number;
+  baseBlue: number;
   red: number;
   green: number;
   blue: number;
@@ -45,6 +50,8 @@ export interface Light {
   radius: number;
   // Should we do shadows?
   castShadows: boolean;
+  // Index for replacing it
+  lightIndex: number;
 }
 
 export interface Sprite {
@@ -69,6 +76,7 @@ export class RaycasterMap {
 
   lights!: Light[];
   lightData!: Colour[][];
+  updatedLightData: Light[] = [];
 
   sprites!: Sprite[];
 
@@ -127,8 +135,8 @@ export class RaycasterMap {
       })
       .forEach((light) => {
         // The ray start position when doing this test
-        let xa = light.x;
-        let ya = light.y;
+        let xa = light.centerX;
+        let ya = light.centerY;
 
         // build a temp place to store every already blocked map square so we don't need to check then all once they are already eliminated
         // 0 to say they are not covered, 1 means partial cover, 2 means fully covered
@@ -360,7 +368,7 @@ export class RaycasterMap {
 
       let makeLight = Math.random() > 0.9;
       let lampRadius = 5.0;
-      let lightTypeTorch = Math.random() > 0.5;
+      let lightTypeTorch = Math.random() > 0.25;
 
       if (spriteIdx === 0) {
         spriteX = Math.floor(this.mapSize / 2.0);
@@ -401,6 +409,7 @@ export class RaycasterMap {
         let green = 1.0;
         let blue = 0.8;
         if (lightTypeTorch) {
+          console.log('Made torch');
           radius *= 0.75;
           type = LightType.Torch;
           red = 1.0;
@@ -411,16 +420,22 @@ export class RaycasterMap {
         }
 
         this.lights.push({
-          type: LightType.Static,
-          x: spriteX + 0.5,
-          y: spriteY + 0.5,
+          type: type,
+          centerX: spriteX + 0.5,
+          centerY: spriteY + 0.5,
+          adjustedX: spriteX + 0.5,
+          adjustedY: spriteY + 0.5,
           mapX: spriteX,
           mapY: spriteY,
           red: red,
           green: green,
           blue: blue,
+          baseRed: red,
+          baseGreen: green,
+          baseBlue: blue,
           radius: lampRadius,
           castShadows: true,
+          lightIndex: this.lights.length,
         });
       } else {
         this.sprites.push({
@@ -466,15 +481,21 @@ export class RaycasterMap {
 
       this.lights.push({
         type: LightType.Static,
-        x: lightX + 0.4 + Math.random() * 0.2,
-        y: lightY + 0.4 + Math.random() * 0.2,
+        centerX: lightX + 0.4 + Math.random() * 0.2,
+        centerY: lightY + 0.4 + Math.random() * 0.2,
+        adjustedX: 0,
+        adjustedY: 0,
         mapX: lightX,
         mapY: lightY,
         red: lightColour.red * brightnessMultipler,
         green: lightColour.green * brightnessMultipler,
         blue: lightColour.blue * brightnessMultipler,
+        baseRed: lightColour.red * brightnessMultipler,
+        baseGreen: lightColour.green * brightnessMultipler,
+        baseBlue: lightColour.blue * brightnessMultipler,
         radius: radius,
         castShadows: false,
+        lightIndex: this.lights.length,
       });
     }
   }
@@ -601,15 +622,21 @@ export class RaycasterMap {
       // also push an appropriate light at the same time we make these lamps
       this.lights.push({
         type: LightType.Static,
-        x: centerX,
-        y: centerY,
+        centerX: centerX,
+        centerY: centerY,
+        adjustedX: centerX,
+        adjustedY: centerY,
         mapX: Math.floor(centerX),
         mapY: Math.floor(centerY),
+        baseRed: roomType.lightColour.red,
+        baseGreen: roomType.lightColour.green,
+        baseBlue: roomType.lightColour.blue,
         red: roomType.lightColour.red,
         green: roomType.lightColour.green,
         blue: roomType.lightColour.blue,
         radius: 5.0,
         castShadows: true,
+        lightIndex: this.lights.length,
       });
     }
 
@@ -815,12 +842,40 @@ export class RaycasterMap {
     });
   }
 
+  updateLights() {
+    const torchLocationWaver = 0.125;
+    const torchLightWaver = 0.5;
+
+    this.lights.forEach((light) => {
+      if (light.type === LightType.Torch) {
+        light.adjustedX = light.centerX + (Math.random() - 0.5) * torchLocationWaver;
+        light.adjustedY = light.centerY + (Math.random() - 0.5) * torchLocationWaver;
+        const adjustColour = 1 + (Math.random() - 0.5) * torchLightWaver;
+        light.red = light.baseRed * adjustColour;
+        light.green = light.baseGreen * adjustColour;
+        light.blue = light.baseBlue * adjustColour;
+        this.updatedLightData.push(light);
+      } else if (light.type === LightType.Flicker) {
+        const adjustColour = Math.random() > 0.9 ? 1 : 0;
+        light.red = light.baseRed * adjustColour;
+        light.green = light.baseGreen * adjustColour;
+        light.blue = light.baseBlue * adjustColour;
+        this.updatedLightData.push(light);
+      }
+    });
+  }
+
   getUpdatedMapData() {
     let updatedCopy = this.updatedMapData;
     this.updatedMapData = [];
     return updatedCopy;
   }
 
+  getUpdatedLightData() {
+    let updatedCopy = this.updatedLightData;
+    this.updatedLightData = [];
+    return updatedCopy;
+  }
+
   // need to update lights every frame
-  
 }
