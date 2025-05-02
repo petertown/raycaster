@@ -25,7 +25,14 @@ export interface Block {
   // perhaps for lights that are never shadowed, just store the combined brightness
 }
 
+export enum LightType {
+  Static,
+  Flicker,
+  Torch,
+}
+
 export interface Light {
+  type: LightType;
   x: number;
   y: number;
   mapX: number;
@@ -353,12 +360,14 @@ export class RaycasterMap {
 
       let makeLight = Math.random() > 0.9;
       let lampRadius = 5.0;
+      let lightTypeTorch = Math.random() > 0.5;
 
       if (spriteIdx === 0) {
         spriteX = Math.floor(this.mapSize / 2.0);
         spriteY = Math.floor(this.mapSize / 2.0);
         makeLight = true;
-        lampRadius = 20.0;
+        lampRadius = 10.0;
+        lightTypeTorch = false;
       } else {
         while (clash) {
           spriteX = Math.floor(Math.random() * (this.mapSize - 1));
@@ -374,23 +383,42 @@ export class RaycasterMap {
       }
 
       if (makeLight) {
+        let textureId = lightTypeTorch
+          ? this.textures.getTextureId('floortorch')
+          : this.textures.getTextureId('light');
         this.sprites.push({
           x: spriteX + 0.5,
           y: spriteY + 0.5,
           texture: this.overrideSprites
             ? this.textures.getTextureId(this.overrideSpriteName)
-            : this.textures.getTextureId('light'),
+            : textureId,
         });
 
         // also push an appropriate light at the same time we make these lamps
+        let radius = lampRadius;
+        let type = LightType.Static;
+        let red = 0.8;
+        let green = 1.0;
+        let blue = 0.8;
+        if (lightTypeTorch) {
+          radius *= 0.75;
+          type = LightType.Torch;
+          red = 1.0;
+          green = 0.3;
+          blue = 0.3;
+        } else if (Math.random() > 0.5) {
+          type = LightType.Flicker;
+        }
+
         this.lights.push({
+          type: LightType.Static,
           x: spriteX + 0.5,
           y: spriteY + 0.5,
           mapX: spriteX,
           mapY: spriteY,
-          red: 0.8,
-          green: 1.0,
-          blue: 0.8,
+          red: red,
+          green: green,
+          blue: blue,
           radius: lampRadius,
           castShadows: true,
         });
@@ -437,6 +465,7 @@ export class RaycasterMap {
       });
 
       this.lights.push({
+        type: LightType.Static,
         x: lightX + 0.4 + Math.random() * 0.2,
         y: lightY + 0.4 + Math.random() * 0.2,
         mapX: lightX,
@@ -571,6 +600,7 @@ export class RaycasterMap {
 
       // also push an appropriate light at the same time we make these lamps
       this.lights.push({
+        type: LightType.Static,
         x: centerX,
         y: centerY,
         mapX: Math.floor(centerX),
@@ -629,8 +659,6 @@ export class RaycasterMap {
           Math.random() > 0.5
             ? this.textures.getTextureId('tilefloor')
             : this.textures.getTextureId('grassfloor');
-
-        floorTexture = this.textures.getTextureId('tilefloor');
 
         switch (type) {
           case BlockType.Wall:
@@ -792,4 +820,7 @@ export class RaycasterMap {
     this.updatedMapData = [];
     return updatedCopy;
   }
+
+  // need to update lights every frame
+  
 }

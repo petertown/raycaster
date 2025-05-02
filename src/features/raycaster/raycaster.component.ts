@@ -76,8 +76,6 @@ export class RaycasterComponent {
   timeDelta = 0;
   timeNow = 0;
   timeLast = new Date().getTime();
-  timeMin = 33; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
-  stillDrawing = true;
   frameTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // last ten frames time
   frameRate = 0;
   raysCast = 0;
@@ -87,7 +85,9 @@ export class RaycasterComponent {
   ngAfterViewInit(): void {
     this.initGame().then(() => {
       // now that it's loaded, we can make a repeated event to keep triggering
-      setInterval(this.renderLoop, 1);
+      // setInterval(this.renderLoop, 1);
+
+      requestAnimationFrame(this.renderLoop);
     });
   }
 
@@ -123,9 +123,6 @@ export class RaycasterComponent {
   }
 
   private initWorker() {
-    // start with "stillDrawing" true so it wont try and draw until worker is free
-    this.stillDrawing = true;
-
     if (typeof Worker !== 'undefined') {
       // Create a new
       this.worker = new Worker(new URL('./utilities/raycaster.worker', import.meta.url));
@@ -159,9 +156,12 @@ export class RaycasterComponent {
           ); */
           this.canvas.context.fillText(
             'Player: ' +
-            Math.floor(100 * this.playerX) / 100.0 + ', ' + Math.floor(100 * this.playerY) / 100.0,
-          2,
-          40);
+              Math.floor(100 * this.playerX) / 100.0 +
+              ', ' +
+              Math.floor(100 * this.playerY) / 100.0,
+            2,
+            40,
+          );
 
           const endRenderTime = new Date().getTime();
           const renderTime = endRenderTime - this.timeLast;
@@ -176,7 +176,8 @@ export class RaycasterComponent {
         } else if (data.messageType === 'init') {
           // Probably don't need anything here
         }
-        this.stillDrawing = false;
+
+        requestAnimationFrame(this.renderLoop);
       };
 
       // init the worker
@@ -209,6 +210,7 @@ export class RaycasterComponent {
         this.textures.loadTexture('tilefloor', '/textures/floors/texture_floor_tile.png', 64, 64),
         this.textures.loadTexture('grassfloor', '/textures/floors/texture_floor_grass.png', 64, 64),
         this.textures.loadTexture('light', '/textures/sprites/light.png', 64, 64),
+        this.textures.loadTexture('floortorch', '/textures/sprites/floortorch.png', 64, 64),
         this.textures.loadTexture('goblin', '/textures/sprites/goblin.png', 64, 64),
         this.textures.loadTexture('white1', '/textures/sprites/white1.png', 64, 64),
         this.textures.loadTexture('white2', '/textures/sprites/white2.png', 64, 64),
@@ -297,35 +299,29 @@ export class RaycasterComponent {
     // current time
     this.timeNow = new Date().getTime();
 
-    // cap framerate and don't start drawing until the last is done
-    const timeDelta = this.timeNow - this.timeLast;
-    if (!this.stillDrawing && timeDelta >= this.timeMin) {
-      this.stillDrawing = true;
+    // time since last frame (delta time)
+    this.timeDelta = this.timeNow - this.timeLast;
+    this.timeLast = this.timeNow;
 
-      // time since last frame (delta time)
-      this.timeDelta = timeDelta;
-      this.timeLast = this.timeNow;
+    this.handleInput();
+    this.gameLogic();
 
-      this.handleInput();
-      this.gameLogic();
+    // Start drawing
+    this.canvas.startDraw(); // fix canvas size and ratio
 
-      // Start drawing
-      this.canvas.startDraw(); // fix canvas size and ratio
-
-      // Send the worker off to do the drawing
-      // Also, send the updates to the map (not the entire map)
-      this.worker.postMessage({
-        messageType: 'draw',
-        playerX: this.renderX,
-        playerY: this.renderY,
-        playerZ: this.renderZ,
-        playerR: this.renderR,
-        playerV: this.renderV,
-        aspectRatio: this.canvas.aspectRatio,
-        projectionLength: this.canvas.projectionLength,
-        updatedMapData: this.map.getUpdatedMapData(),
-      });
-    }
+    // Send the worker off to do the drawing
+    // Also, send the updates to the map (not the entire map)
+    this.worker.postMessage({
+      messageType: 'draw',
+      playerX: this.renderX,
+      playerY: this.renderY,
+      playerZ: this.renderZ,
+      playerR: this.renderR,
+      playerV: this.renderV,
+      aspectRatio: this.canvas.aspectRatio,
+      projectionLength: this.canvas.projectionLength,
+      updatedMapData: this.map.getUpdatedMapData(),
+    });
   };
 
   handleInput() {
@@ -366,68 +362,79 @@ export class RaycasterComponent {
     const collisionMap = this.map.buildCollisionMap(this.playerX, this.playerY);
     const collisionMapScale = 4;
 
-    // Adjust the players speed down for friction
-    const moveFriction = 0.9;
-    const moveAcceleration = 0.00125;
-    const turnFriction = 0.7;
-    const turnAcceleration = 0.00125;
-    this.playerXS *= moveFriction;
-    this.playerYS *= moveFriction;
-    this.playerRS *= turnFriction;
+    const moveFriction = 0.995;
+    const moveAcceleration = 0.00005;
+    const turnFriction = 0.95;
+    const turnAcceleration = 0.0002;
 
-    // Add to rotation before movement so it's more responsive
-    this.playerRS += this.turnSpeed * turnAcceleration * this.timeDelta;
-    this.playerR += this.playerRS;
+    // Do this once per delta time
+    for (let t = 0; t < this.timeDelta; t++) {
+      // Adjust the players speed down for friction
+      this.playerXS *= moveFriction;
+      this.playerYS *= moveFriction;
+      this.playerRS *= turnFriction;
 
-    // Add any new speed the player wants to their movement
-    if (this.forwardSpeed !== 0 || this.strafeSpeed !== 0) {
-      // Make a normalised version of the speed so we dont go nuts strafe walking
-      const normalMovement = normaliseVectorDirection({
-        x: this.strafeSpeed,
-        y: this.forwardSpeed,
-      });
-      this.playerXS +=
-        this.timeDelta *
-        moveAcceleration *
-        (Math.cos(this.playerR) * normalMovement.y +
-          Math.cos(this.playerR + Math.PI / 2.0) * normalMovement.x);
-      this.playerYS +=
-        this.timeDelta *
-        moveAcceleration *
-        (Math.sin(this.playerR) * normalMovement.y +
-          Math.sin(this.playerR + Math.PI / 2.0) * normalMovement.x);
+      // Add to rotation before movement so it's more responsive
+      this.playerRS += this.turnSpeed * turnAcceleration;
+      this.playerR += this.playerRS;
+
+      // Add any new speed the player wants to their movement
+      if (this.forwardSpeed !== 0 || this.strafeSpeed !== 0) {
+        // Make a normalised version of the speed so we dont go nuts strafe walking
+        const normalMovement = normaliseVectorDirection({
+          x: this.strafeSpeed,
+          y: this.forwardSpeed,
+        });
+        this.playerXS +=
+          moveAcceleration *
+          (Math.cos(this.playerR) * normalMovement.y +
+            Math.cos(this.playerR + Math.PI / 2.0) * normalMovement.x);
+        this.playerYS +=
+          moveAcceleration *
+          (Math.sin(this.playerR) * normalMovement.y +
+            Math.sin(this.playerR + Math.PI / 2.0) * normalMovement.x);
+      }
+
+      let rayX = this.playerXS;
+      let rayY = this.playerYS;
+      this.playerSpeed = Math.sqrt(rayX * rayX + rayY * rayY);
+      this.renderWalkTime += this.playerSpeed;
+
+      // if player is moving at any rate
+      if (this.playerSpeed > 0.0001) {
+        let colX = collisionMapScale * (1 + mod(this.playerX, 1));
+        let colY = collisionMapScale * (1 + mod(this.playerY, 1));
+
+        // Do one ray, then do another
+        // and at the end we don't care about the actual rayResults, we care about the difference between start and end
+        // divided by 4 of course
+        let rayResult1 = this.rays.capRay(castRay(colX, colY, rayX, rayY, collisionMap, false));
+        let differenceX = rayResult1.xHit - colX;
+        let differenceY = rayResult1.yHit - colY;
+
+        let rayResult2: RayResult | null = null;
+
+        // If we have ray left, we should do a second ray
+        if (rayResult1.distance < 1.0) {
+          // Do the test a little further back, so we don't just collide with the next square
+          rayResult2 = this.rays.capRay(this.rays.slideRay(rayResult1, collisionMap));
+          differenceX = rayResult2.xHit - colX;
+          differenceY = rayResult2.yHit - colY;
+        }
+
+        this.playerX += differenceX / 4.0;
+        this.playerY += differenceY / 4.0;
+
+        // this.playerXS = differenceX;
+        // this.playerYS = differenceY;
+      }
+
+      // if we are in a block, move us out!
+      // do X first
+      // Then do Y
+      // it's dodgy but it's better than getting stuck in a wall, so move us 1.25 out of the wall
+      // And I mean, this isn't going to be the game, it's going to be the demo for showing
     }
-
-    let rayX = this.playerXS;
-    let rayY = this.playerYS;
-    this.playerSpeed = Math.sqrt(rayX * rayX + rayY * rayY);
-    this.renderWalkTime += this.playerSpeed;
-
-    let colX = collisionMapScale * (1 + mod(this.playerX, 1));
-    let colY = collisionMapScale * (1 + mod(this.playerY, 1));
-
-    // Do one ray, then do another
-    // and at the end we don't care about the actual rayResults, we care about the difference between start and end
-    // divided by 4 of course
-    let rayResult1 = this.rays.capRay(castRay(colX, colY, rayX, rayY, collisionMap, false));
-    let differenceX = rayResult1.xHit - colX;
-    let differenceY = rayResult1.yHit - colY;
-
-    let rayResult2: RayResult | null = null;
-
-    // If we have ray left, we should do a second ray
-    if (rayResult1.distance < 1.0) {
-      // Do the test a little further back, so we don't just collide with the next square
-      rayResult2 = this.rays.capRay(this.rays.slideRay(rayResult1, collisionMap));
-      differenceX = rayResult2.xHit - colX;
-      differenceY = rayResult2.yHit - colY;
-    }
-
-    this.playerX += differenceX / 4.0;
-    this.playerY += differenceY / 4.0;
-
-    this.playerXS = differenceX;
-    this.playerYS = differenceY;
   }
 
   private gameLogic() {
@@ -437,7 +444,7 @@ export class RaycasterComponent {
     // Do walking animation
     this.renderX = this.playerX;
     this.renderY = this.playerY;
-    this.renderZ = this.playerZ + Math.cos(this.renderWalkTime) * 0.2 * this.playerSpeed;
+    this.renderZ = this.playerZ + Math.cos(this.renderWalkTime) * this.playerSpeed * 2.0;
     this.renderR = this.playerR;
     this.renderV = this.playerV;
   }

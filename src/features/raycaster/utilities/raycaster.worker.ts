@@ -275,7 +275,14 @@ function drawWall(
   let lightBlue = ambientBlue / (rayResult.distance + 1);
 
   // add prebaked lighting
-  const bakedLighting = getLightingAt(rayResult.xHit, rayResult.yHit, map, lastMapCoord, isDoor, isDoor);
+  const bakedLighting = getLightingAt(
+    rayResult.xHit,
+    rayResult.yHit,
+    map,
+    lastMapCoord,
+    isDoor,
+    isDoor,
+  );
   lightRed += bakedLighting.red;
   lightGreen += bakedLighting.green;
   lightBlue += bakedLighting.blue;
@@ -345,9 +352,6 @@ function drawFloor(
   let lightBlue = 0;
   let firstCalc = true;
 
-  // Get new shadow for each new coord
-  let lastYTexture = 0;
-  let lastXTexture = 0;
   for (let y = drawPoints.drawEnd + 1; y < renderHeight; y++) {
     if (drawTextures) {
       let yAdjusted = y + -Math.min(0, drawPoints.drawEnd);
@@ -362,10 +366,6 @@ function drawFloor(
       const mapSection = map.mapData[mapX][mapY];
       const floorTexture = textures.textureList[mapSection.floorTexture].data;
 
-      // round off xPos and yPos to the texture coord, to reveal issues and make the shadows go by grid
-      xPos = Math.floor(xPos * floorTexture.width) / floorTexture.width;
-      yPos = Math.floor(yPos * floorTexture.height) / floorTexture.height;
-
       // Get floor texture coordinate
       let xPosPercent = xPos - Math.floor(xPos);
       let yPosPercent = yPos - Math.floor(yPos);
@@ -374,14 +374,8 @@ function drawFloor(
 
       // Do light rays - can I make this a common bit of code so it's not duplicated for walls and maybe ceilings?
       // Also only do every second pixel, or third, try to limit how many rays we need
-      //if (firstCalc || (y - lightRayModOffsets[screenX]) % lightCalcMod === 0) {
-      // Alternatively, only do it if the pixel itself changes
-      // It kind of works the same, less detail on the closer edge
-      // And later when I use a 32x32 texture which is the plan, it'll use even LESS
-      if (xTextureCoord !== lastXTexture || yTextureCoord !== lastYTexture) {
+      if (firstCalc || (y - lightRayModOffsets[screenX]) % lightCalcMod === 0) {
         firstCalc = false;
-        lastXTexture = xTextureCoord;
-        lastYTexture = yTextureCoord;
 
         lightRed = ambientRed / (floorDistance + 1);
         lightGreen = ambientGreen / (floorDistance + 1);
@@ -490,14 +484,7 @@ function drawSprites(
       const mapCoord = map.mapData[Math.floor(sprite.sprite.x)][Math.floor(sprite.sprite.y)];
 
       // Weird bug - if the sprite is at 19.5 and 15.5 (just outside the door to the left) it doesn't calculate that it hits the light
-      const lighting = getLightingAt(
-        sprite.sprite.x,
-        sprite.sprite.y,
-        map,
-        mapCoord,
-        false,
-        true,
-      );
+      const lighting = getLightingAt(sprite.sprite.x, sprite.sprite.y, map, mapCoord, false, true);
 
       for (let x = drawLeftX; x < drawRightX; x++) {
         if (!spritesDepth || depthList[x] > rayDistance) {
@@ -659,15 +646,8 @@ function getLightingAt(
     if (distance < Math.pow(light.radius, 2)) {
       // testing the distance squared is less than the desired distance squared before casting rays!
 
-      // Also if we are in the same square as the light source, or adjacent to it, we don't need to cast any rays!
-      // get a dist squared of the mapX/Y coords - If 1 or less then we don't bother doing shadows
-      let lightHit =
-        Math.pow(light.mapX - mapCoord.x, 2) + Math.pow(light.mapY - mapCoord.y, 2) <= 1;
-
-      // This doesn't work for doors so they need this param set
-      if (alwaysCheckRay) {
-        lightHit = false;
-      }
+      // Also if we are in the same square as the light source we don't need to cast any rays!
+      let lightHit = light.mapX === mapCoord.x && light.mapY === mapCoord.y;
 
       // not sure why but if the distance is 1.0 in either direction, it breaks! I can't understand, it only impacts floors and sprites
       if (!lightHit) {

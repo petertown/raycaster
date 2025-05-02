@@ -1,7 +1,7 @@
+import { mod } from './functions-math';
 import { castRay } from './functions-rays';
 import { RaycasterCanvas } from './raycaster-canvas';
 import { BlockType, RaycasterMap } from './raycaster-map';
-import { mod } from './functions-math';
 import { RaycasterRays, RayResult } from './raycaster-ray';
 
 export class RaycasterRenderer2D {
@@ -15,7 +15,7 @@ export class RaycasterRenderer2D {
   canvas: RaycasterCanvas;
   rays: RaycasterRays;
 
-  drawVisible = true; // single line for where we lookin
+  drawVisible = false; // single line for where we lookin
   drawCollision = false;
   drawLights = false;
   drawCone = true;
