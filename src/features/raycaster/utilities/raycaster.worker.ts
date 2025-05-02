@@ -31,6 +31,12 @@ let drawTextures = true;
 let spritesTransparent = true;
 let spritesDepth = true;
 
+// Dynamic ray detail
+let lightCalcMod = 3;
+let lightRayCountDrop = 50000;
+let lightRayCountIncrease = 20000;
+let lightRayModOffsets: number[] = [];
+
 addEventListener('message', ({ data }) => {
   if (data.messageType === 'draw') {
     postMessage(drawScene(data));
@@ -45,6 +51,12 @@ function initScene(data: any) {
   textures = data.textures;
   renderWidth = data.renderWidth;
   renderHeight = data.renderHeight;
+
+  // Make the initial version of the offsets for mod
+  lightRayModOffsets = [];
+  for (let x = 0; x < renderWidth; x++) {
+    lightRayModOffsets.push(0);
+  }
 
   return { messageType: 'init' };
 }
@@ -103,11 +115,13 @@ function drawScene(data: any) {
     let mapCoordLast = rayResult.mapCoords[rayResult.mapCoords.length - 1];
     textureId = mapCoordLast.wallTexture;
 
+    let isDoor = false;
     let mapCoordSecondLast = rayResult.mapCoords[rayResult.mapCoords.length - 2];
     if (
       mapCoordSecondLast &&
       (mapCoordSecondLast.type === BlockType.XDoor || mapCoordSecondLast.type === BlockType.YDoor)
     ) {
+      isDoor = true;
       textureId = mapCoordSecondLast.innerWallTexture;
     }
 
@@ -135,6 +149,7 @@ function drawScene(data: any) {
         renderWidth,
         target,
         canvasIndice,
+        isDoor,
       );
     }
 
@@ -147,6 +162,7 @@ function drawScene(data: any) {
     // We should probably first attempt to precalculate the possibility for lights for each square, so we can avoid unnecessary checks
     if (drawPoints.drawEnd < renderHeight) {
       drawFloor(
+        x,
         rayResult,
         drawPoints,
         data.playerZ,
@@ -177,8 +193,24 @@ function drawScene(data: any) {
     target,
   );
 
+  // Dynamically adjust ray count detail for next frame and make a noise pattern
+  const rayCount = getRayCount();
+  let updateModOffsets = false;
+  if (rayCount > lightRayCountDrop) {
+    lightCalcMod++;
+    updateModOffsets = true;
+  } else if (rayCount < lightRayCountIncrease) {
+    lightCalcMod = Math.max(1, lightCalcMod - 1);
+    updateModOffsets = true;
+  }
+  if (updateModOffsets) {
+    for (let x = 0; x < renderWidth; x++) {
+      lightRayModOffsets[x] = Math.floor(Math.random() * lightCalcMod);
+    }
+  }
+
   // how many rays did we cast? Return it so that we can display those stats
-  return { raysCast: getRayCount(), target: target, messageType: 'draw' };
+  return { raysCast: rayCount, target: target, messageType: 'draw' };
 }
 
 function drawSky(
@@ -232,6 +264,7 @@ function drawWall(
   renderWidth: number,
   target: ImageData,
   canvasIndice: number,
+  isDoor: boolean,
 ) {
   const wallTexture = textures.textureList[textureId].data;
   let xTextureCoord = Math.floor(rayResult.textureCoord * wallTexture.width);
@@ -242,10 +275,12 @@ function drawWall(
   let lightBlue = ambientBlue / (rayResult.distance + 1);
 
   // add prebaked lighting
-  const bakedLighting = getLightingAt(rayResult.xHit, rayResult.yHit, map, lastMapCoord);
+  const bakedLighting = getLightingAt(rayResult.xHit, rayResult.yHit, map, lastMapCoord, isDoor);
   lightRed += bakedLighting.red;
   lightGreen += bakedLighting.green;
   lightBlue += bakedLighting.blue;
+  // NOTE this doesn't work for doors... I think doors need to have the current map coord instead
+  // It does seem like they don't calculate shadows from diagonal lights
 
   for (let y = drawPoints.drawStart; y <= drawPoints.drawEnd; y++) {
     if (drawTextures) {
@@ -283,6 +318,7 @@ function drawWall(
 // We could also use the same texture mapping to also interpolate between the raycasting
 // but first - get the precalculated shader working and maybe clean up the code so we don't have it all duplicated everywhere
 function drawFloor(
+  screenX: number,
   rayResult: RayResult,
   drawPoints: {
     heightStart: number;
@@ -303,12 +339,11 @@ function drawFloor(
   let xPos: number;
   let yPos: number;
 
-  // Only do light rays for every third pixel
+  // Only do light rays for every X pixel (based on y) - move this to a better place
   let lightRed = 0;
   let lightGreen = 0;
   let lightBlue = 0;
   let firstCalc = true;
-  let lightCalcMod = 3;
 
   for (let y = drawPoints.drawEnd + 1; y < renderHeight; y++) {
     if (drawTextures) {
@@ -326,7 +361,7 @@ function drawFloor(
 
       // Do light rays - can I make this a common bit of code so it's not duplicated for walls and maybe ceilings?
       // Also only do every second pixel, or third, try to limit how many rays we need
-      if (firstCalc || y % lightCalcMod === 0) {
+      if (firstCalc || (y - lightRayModOffsets[screenX]) % lightCalcMod === 0) {
         firstCalc = false;
 
         lightRed = ambientRed / (floorDistance + 1);
@@ -334,7 +369,7 @@ function drawFloor(
         lightBlue = ambientBlue / (floorDistance + 1);
 
         // add prebaked lighting
-        const bakedLighting = getLightingAt(xPos, yPos, map, mapSection);
+        const bakedLighting = getLightingAt(xPos, yPos, map, mapSection, false);
         lightRed += bakedLighting.red;
         lightGreen += bakedLighting.green;
         lightBlue += bakedLighting.blue;
@@ -441,16 +476,27 @@ function drawSprites(
           ).red;
 
           let xTextureCoord = Math.floor(spriteTexture.width * ((x - leftX) / differenceX));
+          let yTextureCoords: number[] = [];
+          for (let y = verticalPoints.drawStart; y <= verticalPoints.drawEnd; y++) {
+            yTextureCoords.push(
+              Math.floor(
+                spriteTexture.height *
+                  ((y - verticalPoints.heightStart) / verticalPoints.heightDifference),
+              ),
+            );
+          }
 
           // Ideally we'd check if the sprite is drawn at all before doing any of this
           const mapCoord = map.mapData[Math.floor(sprite.sprite.x)][Math.floor(sprite.sprite.y)];
-          const lighting = getLightingAt(sprite.sprite.x, sprite.sprite.y, map, mapCoord);
+          const lighting = getLightingAt(sprite.sprite.x, sprite.sprite.y, map, mapCoord, false);
 
           for (let y = verticalPoints.drawStart; y <= verticalPoints.drawEnd; y++) {
-            let yTextureCoord = Math.floor(
+            let yTextureCoord = yTextureCoords[y - verticalPoints.drawStart];
+
+            /*  = Math.floor(
               spriteTexture.height *
                 ((y - verticalPoints.heightStart) / verticalPoints.heightDifference),
-            );
+            ); */
 
             const textureIndices = getColorIndicesForCoord(
               xTextureCoord,
@@ -540,7 +586,7 @@ function getScreenRayVectors(
 }
 
 // Perhaps can do the ray lighting here too
-function getLightingAt(x: number, y: number, map: RaycasterMap, mapCoord: Block) {
+function getLightingAt(x: number, y: number, map: RaycasterMap, mapCoord: Block, isDoor: boolean) {
   // However slow this is, it's gonna be faster than raycasting shadows or whatever else surely?
   // But if it doesn't work... just get rid of it I guess
   const mapX1 = Math.floor(x);
@@ -579,11 +625,10 @@ function getLightingAt(x: number, y: number, map: RaycasterMap, mapCoord: Block)
 
       // Also if we are in the same square as the light source, or adjacent to it, we don't need to cast any rays!
       // get a dist squared of the mapX/Y coords - If 1 or less then we don't bother doing shadows
-
       let lightHit =
         Math.pow(light.mapX - mapCoord.x, 2) + Math.pow(light.mapY - mapCoord.y, 2) <= 1;
 
-      if (mapCoord.type === BlockType.XDoor || mapCoord.type === BlockType.YDoor) {
+      if (isDoor) {
         lightHit = false;
       }
 

@@ -73,7 +73,7 @@ export class RaycasterMap {
   textures: RaycasterTextures;
 
   // settings for map building TEMP until it makes a proper map
-  lightSprites = 40;
+  lightSprites = 100;
   lightMood = 5;
   overrideSprites = false;
   overrideSpriteName = 'white3';
@@ -351,12 +351,14 @@ export class RaycasterMap {
       let spriteX = 0;
       let spriteY = 0;
 
-      let makeLight = Math.random() > 0.75;
+      let makeLight = Math.random() > 0.9;
+      let lampRadius = 5.0;
 
       if (spriteIdx === 0) {
         spriteX = Math.floor(this.mapSize / 2.0);
         spriteY = Math.floor(this.mapSize / 2.0);
         makeLight = true;
+        lampRadius = 20.0;
       } else {
         while (clash) {
           spriteX = Math.floor(Math.random() * (this.mapSize - 1));
@@ -389,7 +391,7 @@ export class RaycasterMap {
           red: 0.8,
           green: 1.0,
           blue: 0.8,
-          radius: 5.0,
+          radius: lampRadius,
           castShadows: true,
         });
       } else {
@@ -426,7 +428,7 @@ export class RaycasterMap {
           clash = false; // give up and just put it in a block who cares I mean ya know
         }
       }
-      radius = (Math.random() + 1) * this.mapSize / 4.0;
+      radius = ((Math.random() + 1) * this.mapSize) / 4.0;
 
       let lightColour = normaliseLightColour({
         red: Math.random(),
@@ -448,6 +450,8 @@ export class RaycasterMap {
     }
   }
 
+  // Instead of this, I want a map builder that takes in a "board game" style rooms made out of parts that join together
+  // Of course, with randomness, like items and chests, based on what the board says
   private buildMapRooms() {
     // Make a totally full map and open up with some rooms
     this.mapData = [];

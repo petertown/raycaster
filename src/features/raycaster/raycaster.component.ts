@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
-import { mod } from './utilities/functions-math';
+import { mod, normaliseVectorDirection } from './utilities/functions-math';
 import { castRay } from './utilities/functions-rays';
 import { RaycasterCanvas } from './utilities/raycaster-canvas';
 import { BlockType, RaycasterMap } from './utilities/raycaster-map';
@@ -33,6 +33,7 @@ export class RaycasterComponent {
   playerV = 0.0;
   playerXS = 0.0;
   playerYS = 0.0;
+  playerRS = 0.0;
   playerSpeed = 0.0;
 
   // Render position (Based on player)
@@ -348,52 +349,49 @@ export class RaycasterComponent {
 
     let verticalLook = true;
 
-    this.playerR += this.turnSpeed * 0.0025 * this.timeDelta;
+    //this.playerR += this.turnSpeed * 0.0025 * this.timeDelta;
     this.playerV = verticalLook ? -this.mouseY : 0.0;
 
-    // if (this.forwardSpeed !== 0 || this.strafeSpeed !== 0) {
-      this.movePlayer(this.forwardSpeed, this.strafeSpeed);
-    // }
+    this.movePlayer();
   }
 
   // Use the rays to figure out how far the player should move
-  private movePlayer(forwardSpeed: number, strafeSpeed: number) {
+  private movePlayer() {
     // get collision data
     const collisionMap = this.map.buildCollisionMap(this.playerX, this.playerY);
     const collisionMapScale = 4;
 
-    // Fire a ray into this using this player position in the ray
-    // But move them back a bit so we don't just go through corners... geez!
-    const forwardAmount = forwardSpeed;
-    const strafeAmount = strafeSpeed;
-
     // Adjust the players speed down for friction
-    const friction = 0.9;
-    const acceleration = 0.00125;
-    this.playerXS *= friction;
-    this.playerYS *= friction;
-    // Add any new speed the player wants
-    this.playerXS +=
-      this.timeDelta *
-      acceleration *
-      (Math.cos(this.playerR) * forwardAmount +
-        Math.cos(this.playerR + Math.PI / 2.0) * strafeAmount);
-    this.playerYS +=
-      this.timeDelta *
-      acceleration *
-      (Math.sin(this.playerR) * forwardAmount +
-        Math.sin(this.playerR + Math.PI / 2.0) * strafeAmount);
+    const moveFriction = 0.9;
+    const moveAcceleration = 0.00125;
+    const turnFriction = 0.7;
+    const turnAcceleration = 0.00125
+    this.playerXS *= moveFriction;
+    this.playerYS *= moveFriction;
+    this.playerRS *= turnFriction;
 
-    // Make a ray that's a normalised length
-    /* let rayX =
-      Math.cos(this.playerR) * forwardAmount +
-      Math.cos(this.playerR + Math.PI / 2.0) * strafeAmount;
-    let rayY =
-      Math.sin(this.playerR) * forwardAmount +
-      Math.sin(this.playerR + Math.PI / 2.0) * strafeAmount;
-    const rayLength = Math.sqrt(rayX * rayX + rayY * rayY);
-    rayX = this.timeDelta * (rayX / rayLength) * 0.0025 * collisionMapScale;
-    rayY = this.timeDelta * (rayY / rayLength) * 0.0025 * collisionMapScale; */
+    // Add to rotation before movement so it's more responsive
+    this.playerRS += this.turnSpeed * turnAcceleration * this.timeDelta;
+    this.playerR += this.playerRS;
+
+    // Add any new speed the player wants to their movement
+    if (this.forwardSpeed !== 0 || this.strafeSpeed !== 0) {
+      // Make a normalised version of the speed so we dont go nuts strafe walking
+      const normalMovement = normaliseVectorDirection({
+        x: this.strafeSpeed,
+        y: this.forwardSpeed,
+      });
+      this.playerXS +=
+        this.timeDelta *
+        moveAcceleration *
+        (Math.cos(this.playerR) * normalMovement.y +
+          Math.cos(this.playerR + Math.PI / 2.0) * normalMovement.x);
+      this.playerYS +=
+        this.timeDelta *
+        moveAcceleration *
+        (Math.sin(this.playerR) * normalMovement.y +
+          Math.sin(this.playerR + Math.PI / 2.0) * normalMovement.x);
+    }
 
     let rayX = this.playerXS;
     let rayY = this.playerYS;
