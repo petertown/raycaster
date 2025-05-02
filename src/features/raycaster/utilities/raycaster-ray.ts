@@ -1,9 +1,9 @@
 // Will store all functions for handling rays in here
 // Just as functions I guess, no need for a class? Or make it a class that can store the map and use it?
 
-import { castRay } from './functions-rays';
-import { Block, BlockType } from './raycaster-map';
 import { rotateVectorDirection } from './functions-math';
+import { castRay } from './functions-rays';
+import { Block } from './raycaster-map';
 
 export interface Coordinate {
   x: number;

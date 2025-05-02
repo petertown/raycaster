@@ -275,7 +275,7 @@ function drawWall(
   let lightBlue = ambientBlue / (rayResult.distance + 1);
 
   // add prebaked lighting
-  const bakedLighting = getLightingAt(rayResult.xHit, rayResult.yHit, map, lastMapCoord, isDoor);
+  const bakedLighting = getLightingAt(rayResult.xHit, rayResult.yHit, map, lastMapCoord, isDoor, isDoor);
   lightRed += bakedLighting.red;
   lightGreen += bakedLighting.green;
   lightBlue += bakedLighting.blue;
@@ -345,6 +345,9 @@ function drawFloor(
   let lightBlue = 0;
   let firstCalc = true;
 
+  // Get new shadow for each new coord
+  let lastYTexture = 0;
+  let lastXTexture = 0;
   for (let y = drawPoints.drawEnd + 1; y < renderHeight; y++) {
     if (drawTextures) {
       let yAdjusted = y + -Math.min(0, drawPoints.drawEnd);
@@ -359,27 +362,36 @@ function drawFloor(
       const mapSection = map.mapData[mapX][mapY];
       const floorTexture = textures.textureList[mapSection.floorTexture].data;
 
+      // round off xPos and yPos to the texture coord, to reveal issues and make the shadows go by grid
+      xPos = Math.floor(xPos * floorTexture.width) / floorTexture.width;
+      yPos = Math.floor(yPos * floorTexture.height) / floorTexture.height;
+
+      // Get floor texture coordinate
+      let xPosPercent = xPos - Math.floor(xPos);
+      let yPosPercent = yPos - Math.floor(yPos);
+      let xTextureCoord = Math.floor(xPosPercent * floorTexture.width);
+      let yTextureCoord = Math.floor(yPosPercent * floorTexture.height);
+
       // Do light rays - can I make this a common bit of code so it's not duplicated for walls and maybe ceilings?
       // Also only do every second pixel, or third, try to limit how many rays we need
-      if (firstCalc || (y - lightRayModOffsets[screenX]) % lightCalcMod === 0) {
+      //if (firstCalc || (y - lightRayModOffsets[screenX]) % lightCalcMod === 0) {
+      // Alternatively, only do it if the pixel itself changes
+      // It kind of works the same, less detail on the closer edge
+      // And later when I use a 32x32 texture which is the plan, it'll use even LESS
+      if (xTextureCoord !== lastXTexture || yTextureCoord !== lastYTexture) {
         firstCalc = false;
+        lastXTexture = xTextureCoord;
+        lastYTexture = yTextureCoord;
 
         lightRed = ambientRed / (floorDistance + 1);
         lightGreen = ambientGreen / (floorDistance + 1);
         lightBlue = ambientBlue / (floorDistance + 1);
 
-        // add prebaked lighting
-        const bakedLighting = getLightingAt(xPos, yPos, map, mapSection, false);
+        const bakedLighting = getLightingAt(xPos, yPos, map, mapSection, false, true);
         lightRed += bakedLighting.red;
         lightGreen += bakedLighting.green;
         lightBlue += bakedLighting.blue;
       }
-
-      // just get decimal from xPos now
-      xPos = xPos - Math.floor(xPos);
-      yPos = yPos - Math.floor(yPos);
-      let xTextureCoord = Math.floor(xPos * floorTexture.width);
-      let yTextureCoord = Math.floor(yPos * floorTexture.height);
 
       const textureIndices = getColorIndicesForCoord(
         xTextureCoord,
@@ -419,8 +431,15 @@ function drawSprites(
   target: ImageData,
 ) {
   // order them all by distance (Distance squared)
-  let spriteOrdered: { sprite: Sprite; dx: number; dy: number; distance: number }[] = [];
+  let spriteOrdered: {
+    sprite: Sprite;
+    dx: number;
+    dy: number;
+    distance: number;
+    spriteIndex: number;
+  }[] = [];
 
+  let index = 0;
   map.sprites.forEach((sprite) => {
     let distanceX = sprite.x - playerX;
     let distanceY = sprite.y - playerY;
@@ -430,7 +449,9 @@ function drawSprites(
       dx: distanceX,
       dy: distanceY,
       distance: distanceX * distanceX + distanceY * distanceY,
+      spriteIndex: index,
     });
+    index++;
   });
 
   // Might get it the wrong way have to check
@@ -465,6 +486,19 @@ function drawSprites(
       let drawRightX = Math.floor(Math.min(renderWidth - 1, Math.max(0, rightX)));
       let differenceX = rightX - leftX;
 
+      // Ideally we'd check if the sprite is drawn at all before doing any of this
+      const mapCoord = map.mapData[Math.floor(sprite.sprite.x)][Math.floor(sprite.sprite.y)];
+
+      // Weird bug - if the sprite is at 19.5 and 15.5 (just outside the door to the left) it doesn't calculate that it hits the light
+      const lighting = getLightingAt(
+        sprite.sprite.x,
+        sprite.sprite.y,
+        map,
+        mapCoord,
+        false,
+        true,
+      );
+
       for (let x = drawLeftX; x < drawRightX; x++) {
         if (!spritesDepth || depthList[x] > rayDistance) {
           // only draw if the depth of the main walls is greater than this one
@@ -485,10 +519,6 @@ function drawSprites(
               ),
             );
           }
-
-          // Ideally we'd check if the sprite is drawn at all before doing any of this
-          const mapCoord = map.mapData[Math.floor(sprite.sprite.x)][Math.floor(sprite.sprite.y)];
-          const lighting = getLightingAt(sprite.sprite.x, sprite.sprite.y, map, mapCoord, false);
 
           for (let y = verticalPoints.drawStart; y <= verticalPoints.drawEnd; y++) {
             let yTextureCoord = yTextureCoords[y - verticalPoints.drawStart];
@@ -586,9 +616,15 @@ function getScreenRayVectors(
 }
 
 // Perhaps can do the ray lighting here too
-function getLightingAt(x: number, y: number, map: RaycasterMap, mapCoord: Block, isDoor: boolean) {
-  // However slow this is, it's gonna be faster than raycasting shadows or whatever else surely?
-  // But if it doesn't work... just get rid of it I guess
+function getLightingAt(
+  x: number,
+  y: number,
+  map: RaycasterMap,
+  mapCoord: Block,
+  alwaysCheckRay: boolean,
+  offsetRay = false,
+) {
+  // Get baked lighting first by finding the baked lighting in that spot
   const mapX1 = Math.floor(x);
   const mapY1 = Math.floor(y);
   const mapX2 = mapX1 + 1;
@@ -613,8 +649,8 @@ function getLightingAt(x: number, y: number, map: RaycasterMap, mapCoord: Block,
   const midCol = blendColours(topCol, bottomCol, ypc1, ypc2);
 
   for (let light of mapCoord.lights) {
-    const xd = x - light.x;
-    const yd = y - light.y;
+    const xd = x - light.x + (offsetRay ? 0.0001 : 0);
+    const yd = y - light.y + (offsetRay ? 0.0001 : 0);
     const xa = light.x;
     const ya = light.y;
 
@@ -628,10 +664,12 @@ function getLightingAt(x: number, y: number, map: RaycasterMap, mapCoord: Block,
       let lightHit =
         Math.pow(light.mapX - mapCoord.x, 2) + Math.pow(light.mapY - mapCoord.y, 2) <= 1;
 
-      if (isDoor) {
+      // This doesn't work for doors so they need this param set
+      if (alwaysCheckRay) {
         lightHit = false;
       }
 
+      // not sure why but if the distance is 1.0 in either direction, it breaks! I can't understand, it only impacts floors and sprites
       if (!lightHit) {
         lightHit =
           !light.castShadows || castRay(xa, ya, xd, yd, map.mapData, true).distance >= 0.999;

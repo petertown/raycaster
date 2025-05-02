@@ -73,7 +73,7 @@ export class RaycasterMap {
   textures: RaycasterTextures;
 
   // settings for map building TEMP until it makes a proper map
-  lightSprites = 100;
+  lightSprites = 50;
   lightMood = 5;
   overrideSprites = false;
   overrideSpriteName = 'white3';
@@ -629,6 +629,8 @@ export class RaycasterMap {
           Math.random() > 0.5
             ? this.textures.getTextureId('tilefloor')
             : this.textures.getTextureId('grassfloor');
+
+        floorTexture = this.textures.getTextureId('tilefloor');
 
         switch (type) {
           case BlockType.Wall:

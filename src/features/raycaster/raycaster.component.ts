@@ -76,7 +76,7 @@ export class RaycasterComponent {
   timeDelta = 0;
   timeNow = 0;
   timeLast = new Date().getTime();
-  timeMin = 13; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
+  timeMin = 33; // 33 for Approx 30FPS, 15 for about 60, 13 for 75, 26 for half rate
   stillDrawing = true;
   frameTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // last ten frames time
   frameRate = 0;
@@ -151,12 +151,17 @@ export class RaycasterComponent {
           this.canvas.context.fillText('MS: ' + this.frameRate, 2, 10);
           this.canvas.context.fillText('FPS: ' + Math.round(1000.0 / this.frameRate), 2, 20);
           this.canvas.context.fillText('RAYS: ' + this.raysCast, 2, 30);
-          this.canvas.context.fillText(
+          /* this.canvas.context.fillText(
             'RPP: ' +
               Math.floor((100 * this.raysCast) / (this.canvas.width * this.canvas.height)) / 100.0,
             2,
             40,
-          );
+          ); */
+          this.canvas.context.fillText(
+            'Player: ' +
+            Math.floor(100 * this.playerX) / 100.0 + ', ' + Math.floor(100 * this.playerY) / 100.0,
+          2,
+          40);
 
           const endRenderTime = new Date().getTime();
           const renderTime = endRenderTime - this.timeLast;
@@ -365,7 +370,7 @@ export class RaycasterComponent {
     const moveFriction = 0.9;
     const moveAcceleration = 0.00125;
     const turnFriction = 0.7;
-    const turnAcceleration = 0.00125
+    const turnAcceleration = 0.00125;
     this.playerXS *= moveFriction;
     this.playerYS *= moveFriction;
     this.playerRS *= turnFriction;

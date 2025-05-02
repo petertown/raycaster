@@ -11,6 +11,7 @@ export function getRayCount() {
   return raysCast;
 }
 
+// Cant work out why but if the start of the ray is on exactly 0.5 it will break badly - something to do with how I'm doing the straight line rays?
 export function castRay(
   xa: number,
   ya: number,
@@ -71,7 +72,7 @@ export function castRay(
 
   // if x is positive it will be rounded up, otherwise it'll be rounded down, same for y
   if (xd > 0) {
-    nextX = Math.ceil(currentX);
+    nextX = Math.floor(currentX) + 1;
     changeX = 1;
   } else {
     nextX = Math.floor(currentX);
@@ -79,7 +80,7 @@ export function castRay(
   }
   if (yd > 0) {
     changeY = 1;
-    nextY = Math.ceil(currentY);
+    nextY = Math.floor(currentY) + 1;
   } else {
     changeY = -1;
     nextY = Math.floor(currentY);
@@ -167,6 +168,7 @@ export function castRay(
 
     // This is going to break if we have an exact angle, so let's never have one ok? Or work something out for it?
     // this is how long the line is away from the next gridline
+    // This definitely doesn't work however
     if (xd === 0) {
       distanceX = 9999999;
     } else {
@@ -203,7 +205,7 @@ export function castRay(
     let hitWall = false;
     // get the floor of where we are, then see what we need to do to check from there
 
-    // can probably do this more simply win the code above
+    // can probably do this more simply with the code above just increment or decrement
     let mapX = Math.floor(currentX);
     let mapY = Math.floor(currentY);
 
