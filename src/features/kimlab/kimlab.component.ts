@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
-import { ImageLoader } from '../../utilities/image-loader.util';
 import { GameState } from 'src/model/game-state.model';
+import { ImageLoader } from '../../utilities/image-loader.util';
+import { IntroState } from './gamestates/intro.state';
 
 @Component({
   selector: 'app-kimlab',
@@ -11,10 +12,17 @@ import { GameState } from 'src/model/game-state.model';
 export class KimlabComponent {
   images: ImageLoader = new ImageLoader();
 
-  stateList: GameState[];
+  // canvas data and context
+  element!: HTMLCanvasElement;
+  context!: CanvasRenderingContext2D;
+
+  stateList: GameState[] = [];
+
+  lastTime: number = 0;
 
   // Render mode
   // An enum here to say wether we are showing the 3D scene, the tabletop scene, or a closeup of the table map view
+  // And of course, a view where it just calls the state to draw to the canvas
   // Each game state can switch between them, a callback in a gamestate for logic says which mode to show
   // There should be a quick fade between them
   // Only the active one should be being rendered too at the one time
@@ -25,11 +33,11 @@ export class KimlabComponent {
   // Any updates to these should be handled with functions that both this and the Web Worker can use so it does the same things
   // export function replaceSprites(renderData: data to be modified, spriteList: List of sprites to totally replace those sprites with)
   // For example
-  
+
   // 3D renderer (raycaster)
 
   // Table renderer (Pan and zoom over our players at the table)
-  // Hopefully we can have the thing the map renders 
+  // Hopefully we can have the thing the map renders
 
   // Map renderer (Flat image)
   // We should have this one draw every time the data changes
@@ -45,10 +53,6 @@ export class KimlabComponent {
   // Dialog renderer
   // Something to show a text box with text in it
   // Should clear when a state is changed
-
-  constructor() {
-    this.stateList = [];
-  }
 
   // Need to do a few things
   // Start with a menu
@@ -71,32 +75,65 @@ export class KimlabComponent {
   // So what's my plan?
   // Gamestates which extend an abstract class that lets them push a new state on a stack, change state to a newly constructed state, or pop themselves off the stack to go back to the previous
 
+  constructor() {}
+
   // Still need an INIT before the game starts to load everything in
   ngAfterViewInit(): void {
+    // Get canvas element and context
+    this.element = document.getElementById('draw-canvas') as HTMLCanvasElement;
+    this.context = this.element.getContext('2d', {
+      willReadFrequently: true,
+    }) as CanvasRenderingContext2D;
+
     // Start with an IntroGameState which just shows the logo
+    const logoState = new IntroState();
+    this.initState(logoState).then((state) => {
+      this.stateList.push(logoState);
 
-
-    this.initGame().then(() => {
-      //requestAnimationFrame(this.renderLoop);
+      // start game loop now it's done
+      requestAnimationFrame(this.gameLoop);
     });
+
+    /* this.initGame().then(() => {
+      //
+    }); */
   }
 
-  private initGame(): Promise<void> {
+  private readonly gameLoop = (timeNow: number) => {
+    // Timing
+    let deltaTime = 0;
+    if (this.lastTime > 0) {
+      deltaTime = timeNow - this.lastTime;
+    }
+    this.lastTime = timeNow;
+
+    // Get the top gamestate and run it
+    const currentState = this.stateList[this.stateList.length - 1];
+
+    // Do game logic
+    currentState.doLogic(deltaTime);
+
+    // Draw 3D
+    // TODO
+
+    // Draw 2D elements
+    currentState.doCanvas(this.context);
+
+    // Do the next loop
+    requestAnimationFrame(this.gameLoop);
+  };
+
+  /* private initGame(): Promise<void> {
     return new Promise((resolve, reject) => {
       // Load the initial images
       // Where to store all these things so I don't have to pass it's reference around? GameController?
-      // Maybe it's here in the Controller - Maybe each gamestate should have an "init" which requests a list of images it needs 
+      // Maybe it's here in the Controller - Maybe each gamestate should have an "init" which requests a list of images it needs
       this.images.loadImages().then(() => {
         resolve();
       });
     });
-  }
+  } */
 
-
-
-
-
-  
   // Manage states - might not need these things probably just do it in one function
 
   // Pop the top state off the list
@@ -105,8 +142,26 @@ export class KimlabComponent {
   }
 
   // Need to pass in a new instance of something that extends GameState
-  pushState<T extends GameState>(newState: T) {}
+  pushState<T extends GameState>(newState: T) {
+    this.stateList.push(newState);
+  }
 
   // This one pops the top element off, and adds a new state to replace it - do I need it?
   swapState<T extends GameState>(newState: T) {}
+
+  // Run the async initialisation of the state by loading in all the images it needs
+  initState<T extends GameState>(newState: T): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const imageList = newState.getImageList();
+      if (imageList.length > 0) {
+        this.images.loadImages(imageList).then(() => {
+          // Give these images to the 
+
+          resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
+  }
 }
