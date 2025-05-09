@@ -1,4 +1,6 @@
 import { Component } from '@angular/core';
+import { ImageStore } from '@utilities/image-store';
+import { RendererCanvas } from '@utilities/renderer-canvas.util';
 import { GameState } from 'src/model/game-state.model';
 import { ImageLoader } from '../../utilities/image-loader.util';
 import { IntroState } from './gamestates/intro.state';
@@ -13,12 +15,12 @@ export class KimlabComponent {
   images: ImageLoader = new ImageLoader();
 
   // canvas data and context
-  element!: HTMLCanvasElement;
-  context!: CanvasRenderingContext2D;
+  canvas!: HTMLCanvasElement;
+  ctx!: CanvasRenderingContext2D;
 
   stateList: GameState[] = [];
 
-  lastTime: number = 0;
+  lastDrawTime: number = 0;
 
   // Render mode
   // An enum here to say wether we are showing the 3D scene, the tabletop scene, or a closeup of the table map view
@@ -42,6 +44,9 @@ export class KimlabComponent {
   // Map renderer (Flat image)
   // We should have this one draw every time the data changes
   // Draw it to a texture, so we can use it to draw on the table
+
+  // Renderer Utilities
+  rendererCanvas!: RendererCanvas;
 
   // Button renderer
   // Need some way to render text and buttons - Can have a <div> on top of the canvas with a good layout for the buttons
@@ -72,18 +77,19 @@ export class KimlabComponent {
     GameMenu, // Player has pressed escape and opened the menu - pressing escape again afterwards will go back to the previous gamestate
   }
  */
-  // So what's my plan?
-  // Gamestates which extend an abstract class that lets them push a new state on a stack, change state to a newly constructed state, or pop themselves off the stack to go back to the previous
 
   constructor() {}
 
   // Still need an INIT before the game starts to load everything in
   ngAfterViewInit(): void {
     // Get canvas element and context
-    this.element = document.getElementById('draw-canvas') as HTMLCanvasElement;
-    this.context = this.element.getContext('2d', {
+    this.canvas = document.getElementById('draw-canvas') as HTMLCanvasElement;
+    this.ctx = this.canvas.getContext('2d', {
       willReadFrequently: true,
     }) as CanvasRenderingContext2D;
+
+    // Make our renderer instances
+    this.rendererCanvas = new RendererCanvas(this.canvas, this.ctx);
 
     // Start with an IntroGameState which just shows the logo
     const logoState = new IntroState();
@@ -93,19 +99,19 @@ export class KimlabComponent {
       // start game loop now it's done
       requestAnimationFrame(this.gameLoop);
     });
-
-    /* this.initGame().then(() => {
-      //
-    }); */
   }
 
   private readonly gameLoop = (timeNow: number) => {
     // Timing
     let deltaTime = 0;
-    if (this.lastTime > 0) {
-      deltaTime = timeNow - this.lastTime;
+    if (this.lastDrawTime > 0) {
+      deltaTime = timeNow - this.lastDrawTime;
     }
-    this.lastTime = timeNow;
+    this.lastDrawTime = timeNow;
+
+    // Get aspect ratio
+    const aspectRatio = (1.0 * this.canvas.offsetWidth) / this.canvas.offsetHeight;
+    this.rendererCanvas.setAspectRatio(aspectRatio);
 
     // Get the top gamestate and run it
     const currentState = this.stateList[this.stateList.length - 1];
@@ -113,49 +119,24 @@ export class KimlabComponent {
     // Do game logic
     currentState.doLogic(deltaTime);
 
-    // Draw 3D
+    // Switch to render mode and draw it
     // TODO
 
     // Draw 2D elements
-    currentState.doCanvas(this.context);
+    currentState.doCanvas(this.rendererCanvas);
 
     // Do the next loop
     requestAnimationFrame(this.gameLoop);
   };
-
-  /* private initGame(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Load the initial images
-      // Where to store all these things so I don't have to pass it's reference around? GameController?
-      // Maybe it's here in the Controller - Maybe each gamestate should have an "init" which requests a list of images it needs
-      this.images.loadImages().then(() => {
-        resolve();
-      });
-    });
-  } */
-
-  // Manage states - might not need these things probably just do it in one function
-
-  // Pop the top state off the list
-  popState() {
-    this.stateList.pop();
-  }
-
-  // Need to pass in a new instance of something that extends GameState
-  pushState<T extends GameState>(newState: T) {
-    this.stateList.push(newState);
-  }
-
-  // This one pops the top element off, and adds a new state to replace it - do I need it?
-  swapState<T extends GameState>(newState: T) {}
 
   // Run the async initialisation of the state by loading in all the images it needs
   initState<T extends GameState>(newState: T): Promise<void> {
     return new Promise((resolve, reject) => {
       const imageList = newState.getImageList();
       if (imageList.length > 0) {
-        this.images.loadImages(imageList).then(() => {
-          // Give these images to the 
+        this.images.loadImages(imageList).then((imageStore) => {
+          // Give these images to the state
+          newState.setImageList(imageStore);
 
           resolve();
         });

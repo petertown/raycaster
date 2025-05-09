@@ -1,4 +1,4 @@
-import { ImageContainer, ImageRequest, ImageType } from 'src/model/image.model';
+import { ImageContainer, ImageRequest } from 'src/model/image.model';
 import { ImageStore } from './image-store';
 
 // This is to get the raw images and store them in memory
@@ -42,14 +42,13 @@ export class ImageLoader {
         resolve(imageStore);
       } else {
         // Otherwise continue loading the image
-        this.buildImage(imageLoad.filename, imageLoad.width, imageLoad.height)
-          .then((imageData) => {
+        this.buildImage(imageLoad.filename)
+          .then((bitmapData) => {
             imageStore = {
               name: imageLoad.name,
-              type: this.mapType(imageLoad.type),
-              width: imageLoad.width, // Can I get the size from the loaded image?
-              height: imageLoad.height,
-              data: imageData,
+              width: bitmapData.width,
+              height: bitmapData.height,
+              bitmap: bitmapData,
             };
 
             this.imageList.push(imageStore);
@@ -62,43 +61,15 @@ export class ImageLoader {
     });
   }
 
-  private mapType(stringType: string) {
-    switch (stringType) {
-      case 'texture':
-        return ImageType.Texture;
-      case 'logo':
-        return ImageType.Logo;
-      default:
-        return ImageType.Image;
-    }
-  }
-
   // building the stored image is async
-  private buildImage(fileName: string, width: number, height: number): Promise<ImageData> {
+  private buildImage(fileName: string): Promise<ImageBitmap> {
     return new Promise((resolve, reject) => {
       const workingImage = new Image();
       workingImage.src = fileName;
       workingImage.addEventListener('load', () => {
-        // we need to make this a canvas, so we can pick colours from it
-
-        const textureCanvas = document.createElement('canvas');
-        textureCanvas.width = workingImage.width;
-        textureCanvas.height = workingImage.height;
-        const textureContext = textureCanvas.getContext('2d');
-
-        if (textureContext) {
-          textureContext.drawImage(workingImage, 0, 0);
-
-          // Return the raw data of that to use later
-          let imageData = textureContext.getImageData(0, 0, width, height);
-
-          // Do I need to do this?
-          textureCanvas.remove();
-
-          resolve(imageData);
-        } else {
-          reject(new Error("Couldn't load texture " + fileName));
-        }
+        createImageBitmap(workingImage).then((bitmap) => {
+          resolve(bitmap);
+        });
       });
     });
   }

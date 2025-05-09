@@ -1,5 +1,6 @@
 // interface that needs to be implemented by every game state
 import { ImageStore } from '@utilities/image-store';
+import { RendererCanvas } from '@utilities/renderer-canvas.util';
 import { ImageRequest } from './image.model';
 
 // Probably move it into some model file
@@ -20,7 +21,7 @@ export interface GameState {
   // doRender(): void;
 
   // Run game state render to the canvas if it needs it
-  doCanvas(ctx: CanvasRenderingContext2D): void;
+  doCanvas(renderer: RendererCanvas): void;
 
   // TODO: Run game state DOM stuff? Like buttons etc?
   // Maybe some kind of interface pattern
