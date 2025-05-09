@@ -1,14 +1,18 @@
-import { ImageStore } from '@utilities/image-store';
 import { RenderAlignment, RendererCanvas } from '@utilities/renderer-canvas.util';
-import { GameState } from 'src/model/game-state.model';
+import { GameState, RenderType, StateAction, StateActionType } from 'src/abstract/game-state.abstract';
 import { ImageContainer, ImageRequest } from 'src/model/image.model';
+import { WalKimState } from './walkim.state';
 
-export class IntroState implements GameState {
-  imageStore!: ImageStore;
-
+export class IntroState extends GameState {
   logoImage!: ImageContainer;
 
+  animationTime = 0.0;
   logoAnimationTime = 0.0;
+  textAnimationTime = 0.0;
+
+  // Always do the fadeout, but in future can go to different end points
+  fadeOut = false;
+  fadeOutTime = 0.0;
 
   getImageList(): ImageRequest[] {
     return [
@@ -19,24 +23,37 @@ export class IntroState implements GameState {
     ];
   }
 
-  // Can we extend a class that has a lot of this implemented - is it posible to have a class with abstract and non abstract functions?
-  setImageList(imageStoreNew: ImageStore): void {
-    this.imageStore = imageStoreNew;
-
-    // Store the bitmap in an easier to get to place
+  doInit() {
+    // Store the bitmap logo in an easier to get to place
     this.logoImage = this.imageStore.imageList[this.imageStore.getImageId('logo-kimlab')];
   }
 
-  doLogic(deltaTime: number): void {
-    this.logoAnimationTime = Math.min(1.0, this.logoAnimationTime + deltaTime / 10000.0);
+  doLogic(deltaTime: number, keyboard: Map<string, boolean>): RenderType {
+    this.animationTime += deltaTime / 10000.0;
+    this.logoAnimationTime = Math.min(this.animationTime, 1.0);
+    this.textAnimationTime = Math.max(0.0, Math.min((this.animationTime - 1.0) * 10.0, 1.0));
+
+    if (this.fadeOut) {
+      this.fadeOutTime += deltaTime / 1000.0;
+    }
+
+    // if text animation time is 1.0, then we are ready to test for the enter key
+    if (keyboard.get('ENTER')) {
+      this.fadeOut = true;
+    }
+
+    return RenderType.None;
   }
 
   doCanvas(renderer: RendererCanvas): void {
     // blank the image
     renderer.clearImage();
 
+    // Get the fade out alpha to multiply all this with
+    const fadeOutAlpha = Math.max(1.0 - this.fadeOutTime, 0.0);
+
     // Get the alpha for the anim time
-    const alpha = this.logoAnimationTime;
+    const alpha = this.logoAnimationTime * fadeOutAlpha;
     const yPos = 1.0 - this.logoAnimationTime;
 
     // draw the entire image full screen
@@ -51,7 +68,22 @@ export class IntroState implements GameState {
       alpha,
     );
 
-    //start with a test box
-    // How will I handle the aspect ratios/screen sizes? I might need a Drawing function that handles aspect ratios, sliding images to top or bottom while fitting it in etc
+    const textAlpha = this.textAnimationTime * fadeOutAlpha;
+    renderer.drawText(
+      'Press enter to start',
+      RenderAlignment.Center,
+      RenderAlignment.End,
+      textAlpha,
+    );
+  }
+
+  updateState(): StateAction {
+    if (this.fadeOutTime < 1.0) {
+      return { action: StateActionType.None, newState: null };
+    } else {
+      // make the new state - just recreate this one for now TEMP
+      const walkState = new WalKimState();
+      return { action: StateActionType.Swap, newState: walkState };
+    }
   }
 }

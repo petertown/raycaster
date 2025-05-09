@@ -82,7 +82,7 @@ export class RendererCanvas {
   }
 
   clearImage() {
-    this.ctx.fillStyle = "black";
+    this.ctx.fillStyle = 'black';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
@@ -113,7 +113,51 @@ export class RendererCanvas {
     this.ctx.restore();
   }
 
-  transformPoint(point: { x: number; y: number }) {
+  drawText(content: string, alignmentX: RenderAlignment, alignmentY: RenderAlignment, alpha = 1.0) {
+    let textSize = 20; // Not sure if I want to set it all the time
+
+    this.ctx.save();
+    this.ctx.globalAlpha = alpha;
+    this.ctx.fillStyle = 'white';
+    this.ctx.font = textSize + 'px Consolas';
+
+    // Scale for the aspect ratio - needs to be countered when positioning it later
+    this.ctx.scale(1.0 / this.aspectRatio, 1.0);
+
+    // measure the text (If we want to wrap later)
+    // const textRight = this.ctx.measureText(content).actualBoundingBoxRight;
+
+    let textY = textSize;
+    switch (alignmentY) {
+      case RenderAlignment.Center:
+        textY = this.canvas.height / 2.0 + textSize / 2.0;
+        break;
+      case RenderAlignment.End:
+        textY = this.canvas.height - textSize / 2.0;
+        break;
+      default: // Start doesn't need to do anything
+        break;
+    }
+
+    let textX = 0.0;
+    switch (alignmentX) {
+      case RenderAlignment.Center:
+        textX = this.aspectRatio * (this.canvas.width / 2.0);
+        this.ctx.textAlign = 'center';
+        break;
+      case RenderAlignment.End:
+        textX = this.aspectRatio * this.canvas.width;
+        this.ctx.textAlign = 'right';
+        break;
+      default: // Start doesn't need to do anything
+        break;
+    }
+
+    this.ctx.fillText(content, textX, textY, this.canvas.width * this.aspectRatio);
+    this.ctx.restore();
+  }
+
+  private transformPoint(point: { x: number; y: number }) {
     let newPoint = { x: 0, y: 0 };
 
     newPoint.x = (this.renderXE - this.renderXS) * point.x + this.renderXS;

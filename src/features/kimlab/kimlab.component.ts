@@ -1,7 +1,6 @@
 import { Component } from '@angular/core';
-import { ImageStore } from '@utilities/image-store';
 import { RendererCanvas } from '@utilities/renderer-canvas.util';
-import { GameState } from 'src/model/game-state.model';
+import { GameState, StateActionType } from 'src/abstract/game-state.abstract';
 import { ImageLoader } from '../../utilities/image-loader.util';
 import { IntroState } from './gamestates/intro.state';
 
@@ -12,15 +11,23 @@ import { IntroState } from './gamestates/intro.state';
   styleUrl: './kimlab.component.scss',
 })
 export class KimlabComponent {
+  // Utility to load images (Not for textures)
   images: ImageLoader = new ImageLoader();
 
   // canvas data and context
   canvas!: HTMLCanvasElement;
   ctx!: CanvasRenderingContext2D;
 
+  // States
   stateList: GameState[] = [];
 
+  // Last timestamp when a draw started
   lastDrawTime: number = 0;
+
+  // Keyboard and mouse
+  controlMap = new Map<string, boolean>();
+  mouseX = 0;
+  mouseY = 0;
 
   // Render mode
   // An enum here to say wether we are showing the 3D scene, the tabletop scene, or a closeup of the table map view
@@ -91,6 +98,9 @@ export class KimlabComponent {
     // Make our renderer instances
     this.rendererCanvas = new RendererCanvas(this.canvas, this.ctx);
 
+    // Initialise controls
+    this.initControls();
+
     // Start with an IntroGameState which just shows the logo
     const logoState = new IntroState();
     this.initState(logoState).then((state) => {
@@ -117,20 +127,42 @@ export class KimlabComponent {
     const currentState = this.stateList[this.stateList.length - 1];
 
     // Do game logic
-    currentState.doLogic(deltaTime);
+    currentState.doLogic(deltaTime, this.controlMap);
 
-    // Switch to render mode and draw it
-    // TODO
+    // Check if we should change the state
+    const stateChange = currentState.updateState();
+    if (stateChange.action === StateActionType.None) {
+      // Switch to render mode and draw it
+      // TODO
 
-    // Draw 2D elements
-    currentState.doCanvas(this.rendererCanvas);
+      // Draw 2D elements
+      currentState.doCanvas(this.rendererCanvas);
 
-    // Do the next loop
-    requestAnimationFrame(this.gameLoop);
+      // Do the next loop
+      requestAnimationFrame(this.gameLoop);
+    } else if (stateChange.action === StateActionType.Pop) {
+      this.stateList.pop();
+      requestAnimationFrame(this.gameLoop);
+    } else if (stateChange.action === StateActionType.Push && stateChange.newState) {
+      this.initState(stateChange.newState).then((state) => {
+        this.stateList.push(state);
+
+        // start game loop now it's done
+        requestAnimationFrame(this.gameLoop);
+      });
+    } else if (stateChange.action === StateActionType.Swap && stateChange.newState) {
+      this.initState(stateChange.newState).then((state) => {
+        this.stateList.pop();
+        this.stateList.push(state);
+
+        // start game loop now it's done
+        requestAnimationFrame(this.gameLoop);
+      });
+    }
   };
 
   // Run the async initialisation of the state by loading in all the images it needs
-  initState<T extends GameState>(newState: T): Promise<void> {
+  initState<T extends GameState>(newState: T): Promise<T> {
     return new Promise((resolve, reject) => {
       const imageList = newState.getImageList();
       if (imageList.length > 0) {
@@ -138,11 +170,56 @@ export class KimlabComponent {
           // Give these images to the state
           newState.setImageList(imageStore);
 
-          resolve();
+          newState.doInit();
+
+          resolve(newState);
         });
       } else {
-        resolve();
+        resolve(newState);
       }
     });
+  }
+
+  initControls() {
+    this.canvas.onmousemove = (event) => {
+      // subtract the offsetX and Y from the real canvas size and make mouse from -1 to 1
+      this.mouseX = 2.0 * (event.offsetX / this.canvas.offsetWidth - 0.5);
+      this.mouseY = 2.0 * (event.offsetY / this.canvas.offsetHeight - 0.5);
+      // I want to figure out the better mouse movement at some point so not using it yet
+      // Want to change it to be "relative" mouse movement
+    };
+
+    // Have a "map" of buttons pressed, or perhaps I need to also have upper and lower case treated the same?
+    this.canvas.addEventListener('keydown', (e: KeyboardEvent) => {
+      this.controlMap.set(this.getKeyCode(e.key), true);
+    });
+
+    this.canvas.addEventListener('keyup', (e: KeyboardEvent) => {
+      this.controlMap.set(this.getKeyCode(e.key), false);
+    });
+  }
+
+  private getKeyCode(keyCode: string) {
+    // We only care about the arrows and the single digits
+    if (keyCode.length === 1) {
+      return keyCode.toUpperCase();
+    } else {
+      switch (keyCode) {
+        case 'ArrowDown':
+          return 'DOWN';
+        case 'ArrowUp':
+          return 'UP';
+        case 'ArrowLeft':
+          return 'LEFT';
+        case 'ArrowRight':
+          return 'RIGHT';
+        case 'Enter':
+          return 'ENTER';
+        case 'Escape':
+          return 'ESCAPE';
+        default:
+          return 'OTHER';
+      }
+    }
   }
 }
