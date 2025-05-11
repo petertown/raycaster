@@ -486,6 +486,16 @@ function drawSprites(
       // Weird bug - if the sprite is at 19.5 and 15.5 (just outside the door to the left) it doesn't calculate that it hits the light
       const lighting = getLightingAt(sprite.sprite.x, sprite.sprite.y, map, mapCoord, false, true);
 
+      let yTextureCoords: number[] = [];
+      for (let y = verticalPoints.drawStart; y <= verticalPoints.drawEnd; y++) {
+        yTextureCoords.push(
+          Math.floor(
+            spriteTexture.height *
+              ((y - verticalPoints.heightStart) / verticalPoints.heightDifference),
+          ),
+        );
+      }
+
       for (let x = drawLeftX; x < drawRightX; x++) {
         if (!spritesDepth || depthList[x] > rayDistance) {
           // only draw if the depth of the main walls is greater than this one
@@ -497,23 +507,9 @@ function drawSprites(
           ).red;
 
           let xTextureCoord = Math.floor(spriteTexture.width * ((x - leftX) / differenceX));
-          let yTextureCoords: number[] = [];
-          for (let y = verticalPoints.drawStart; y <= verticalPoints.drawEnd; y++) {
-            yTextureCoords.push(
-              Math.floor(
-                spriteTexture.height *
-                  ((y - verticalPoints.heightStart) / verticalPoints.heightDifference),
-              ),
-            );
-          }
 
           for (let y = verticalPoints.drawStart; y <= verticalPoints.drawEnd; y++) {
             let yTextureCoord = yTextureCoords[y - verticalPoints.drawStart];
-
-            /*  = Math.floor(
-              spriteTexture.height *
-                ((y - verticalPoints.heightStart) / verticalPoints.heightDifference),
-            ); */
 
             const textureIndices = getColorIndicesForCoord(
               xTextureCoord,

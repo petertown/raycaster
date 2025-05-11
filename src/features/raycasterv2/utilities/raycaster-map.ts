@@ -415,7 +415,7 @@ export class RaycasterMap {
           red = 1.0;
           green = 0.3;
           blue = 0.3;
-        } else if (Math.random() > 0.5) {
+        } else if (Math.random() > 0.8) {
           type = LightType.Flicker;
         }
 
