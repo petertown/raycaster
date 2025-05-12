@@ -15,10 +15,11 @@ export interface StateAction {
   newState: GameState | null;
 }
 
-export enum RenderType {
+export enum RenderMode {
   None,
   Map,
   Raycast,
+  Table,
 }
 
 // Probably move it into some model file
@@ -36,7 +37,7 @@ export abstract class GameState {
   abstract doInit(): void;
 
   // Run game state logic using a deltaTime as input and return the RenderType we want
-  abstract doLogic(deltaTime: number, keyboard: Map<string, boolean>): RenderType;
+  abstract doLogic(deltaTime: number, keyboard: Map<string, boolean>): RenderMode;
 
   // Run game state render of the map
   // doRender(): void;

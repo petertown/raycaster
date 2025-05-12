@@ -1,8 +1,14 @@
 import { Component } from '@angular/core';
 import { RendererCanvas } from '@utilities/renderer-canvas.util';
-import { GameState, StateActionType } from 'src/abstract/game-state.abstract';
+import {
+  GameState,
+  RenderMode,
+  StateAction,
+  StateActionType,
+} from 'src/abstract/game-state.abstract';
 import { ImageLoader } from '../../utilities/image-loader.util';
 import { IntroState } from './gamestates/intro.state';
+import { RayCastMessageType } from './workers/raycaster.worker';
 
 @Component({
   selector: 'app-kimlab',
@@ -17,9 +23,11 @@ export class KimlabComponent {
   // canvas data and context
   canvas!: HTMLCanvasElement;
   ctx!: CanvasRenderingContext2D;
+  target!: ImageData;
 
   // States
   stateList: GameState[] = [];
+  stateCurrent!: GameState;
 
   // Last timestamp when a draw started
   lastDrawTime: number = 0;
@@ -30,11 +38,10 @@ export class KimlabComponent {
   mouseY = 0;
 
   // Render mode
-  // An enum here to say wether we are showing the 3D scene, the tabletop scene, or a closeup of the table map view
-  // And of course, a view where it just calls the state to draw to the canvas
-  // Each game state can switch between them, a callback in a gamestate for logic says which mode to show
-  // There should be a quick fade between them
-  // Only the active one should be being rendered too at the one time
+  renderMode: RenderMode = RenderMode.None;
+
+  // Web Workers, to handle multi threading - start with just one
+  private worker!: Worker;
 
   // Render data
   // Keep the data that the renderer needs - so it can give it to the renderers as they need it
@@ -66,27 +73,6 @@ export class KimlabComponent {
   // Something to show a text box with text in it
   // Should clear when a state is changed
 
-  // Need to do a few things
-  // Start with a menu
-  // new game, continue, settings
-  // So that's first thing to do
-  // Menu's should be html overlaid over the top of the canvas, and should be able to be opened as a game state
-  // So, start with a main menu animation on the canvas
-  // Then when that menu animation ends, swap to the main menu over the top of it
-  /// This was an idea but I don't like it now
-  /* export enum GameStateType {
-    MainMenu, // Just sitting on the menu
-    GameInit, // Do the stuff to initialise a new game, then navigate to the GameRun
-    GameRun, // Run game logic, and stop when there's a choice to be done, will show the 3D scene from the players POV
-    GamePlayerChoice, // Stopped to make a choice, shows the available options in a clickable menu, hovering over them should look at the choice
-    GameFriendChoice, // Stopped so that the other players can make a choice and say it in dialog, then navigates to GameDialog to actually say it
-    GameDialog, // Plays a set of dialog, then goes back to GameRun afterwards
-    GameMenu, // Player has pressed escape and opened the menu - pressing escape again afterwards will go back to the previous gamestate
-  }
- */
-
-  constructor() {}
-
   // Still need an INIT before the game starts to load everything in
   ngAfterViewInit(): void {
     // Get canvas element and context
@@ -95,8 +81,17 @@ export class KimlabComponent {
       willReadFrequently: true,
     }) as CanvasRenderingContext2D;
 
+    // clear the canvas first so that everything is fully opaque
+    this.clearCanvas();
+
+    // save the render target (twice) with the cleared canvas!
+    this.target = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+
     // Make our renderer instances
     this.rendererCanvas = new RendererCanvas(this.canvas, this.ctx);
+
+    // Init Web Worker
+    this.initWebWorker();
 
     // Initialise controls
     this.initControls();
@@ -124,42 +119,53 @@ export class KimlabComponent {
     this.rendererCanvas.setAspectRatio(aspectRatio);
 
     // Get the top gamestate and run it
-    const currentState = this.stateList[this.stateList.length - 1];
+    this.stateCurrent = this.stateList[this.stateList.length - 1];
 
-    // Do game logic
-    currentState.doLogic(deltaTime, this.controlMap);
+    // Do game logic and get the updated render mode
+    this.renderMode = this.stateCurrent.doLogic(deltaTime, this.controlMap);
 
     // Check if we should change the state
-    const stateChange = currentState.updateState();
+    const stateChange = this.stateCurrent.updateState();
     if (stateChange.action === StateActionType.None) {
-      // Switch to render mode and draw it
-      // TODO
+      // If we are rendering to raycast, give to the web worker now
+      if (this.renderMode === RenderMode.Raycast) {
+        this.worker.postMessage({
+          messageType: 'draw',
+          aspectRatio: aspectRatio,
+        });
+      } else {
+        // Draw to the canvas
+        this.doFinalise();
+      }
+    } else {
+      this.handleStateChange(stateChange);
+    }
+  };
 
-      // Draw 2D elements
-      currentState.doCanvas(this.rendererCanvas);
+  private doFinalise() {
+    this.stateCurrent.doCanvas(this.rendererCanvas);
 
-      // Do the next loop
-      requestAnimationFrame(this.gameLoop);
-    } else if (stateChange.action === StateActionType.Pop) {
+    // Do the next loop
+    requestAnimationFrame(this.gameLoop);
+  }
+
+  private handleStateChange(stateChange: StateAction) {
+    if (stateChange.action === StateActionType.Pop) {
       this.stateList.pop();
       requestAnimationFrame(this.gameLoop);
     } else if (stateChange.action === StateActionType.Push && stateChange.newState) {
       this.initState(stateChange.newState).then((state) => {
         this.stateList.push(state);
-
-        // start game loop now it's done
         requestAnimationFrame(this.gameLoop);
       });
     } else if (stateChange.action === StateActionType.Swap && stateChange.newState) {
       this.initState(stateChange.newState).then((state) => {
         this.stateList.pop();
         this.stateList.push(state);
-
-        // start game loop now it's done
         requestAnimationFrame(this.gameLoop);
       });
     }
-  };
+  }
 
   // Run the async initialisation of the state by loading in all the images it needs
   initState<T extends GameState>(newState: T): Promise<T> {
@@ -170,6 +176,7 @@ export class KimlabComponent {
           // Give these images to the state
           newState.setImageList(imageStore);
 
+          // How to send the new map data to the web worker? 
           newState.doInit();
 
           resolve(newState);
@@ -221,5 +228,41 @@ export class KimlabComponent {
           return 'OTHER';
       }
     }
+  }
+
+  private initWebWorker() {
+    // Create a new Web Worker
+    this.worker = new Worker(new URL('./workers/raycaster.worker', import.meta.url));
+
+    this.worker.onmessage = ({ data }) => {
+      if (data === RayCastMessageType.Draw) {
+        // Draw to the canvas and go to next frame
+        this.doFinalise();
+      } else if (data === RayCastMessageType.Init) {
+        // Nothing to do YET
+      }
+    };
+
+    // init the worker
+    this.worker.postMessage({
+      messageType: 'init',
+      target: this.target,
+      renderWidth: this.canvas.width,
+      renderHeight: this.canvas.height,
+    });
+  }
+
+  // Clear the canvas by setting every pixel to black and fully opaque
+  private clearCanvas() {
+    const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 0; // red
+      data[i + 1] = 0; // green
+      data[i + 2] = 0; // blue
+      data[i + 3] = 255; // alpha - always set to 255! It is by default 0, and so nothing shows
+    }
+
+    this.ctx.putImageData(imageData, 0, 0);
   }
 }

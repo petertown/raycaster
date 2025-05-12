@@ -1,5 +1,5 @@
 import { RenderAlignment, RendererCanvas } from '@utilities/renderer-canvas.util';
-import { GameState, RenderType, StateAction, StateActionType } from 'src/abstract/game-state.abstract';
+import { GameState, RenderMode, StateAction, StateActionType } from 'src/abstract/game-state.abstract';
 import { ImageContainer, ImageRequest } from 'src/model/image.model';
 import { WalKimState } from './walkim.state';
 
@@ -28,7 +28,7 @@ export class IntroState extends GameState {
     this.logoImage = this.imageStore.imageList[this.imageStore.getImageId('logo-kimlab')];
   }
 
-  doLogic(deltaTime: number, keyboard: Map<string, boolean>): RenderType {
+  doLogic(deltaTime: number, keyboard: Map<string, boolean>): RenderMode {
     this.animationTime += deltaTime / 10000.0;
     this.logoAnimationTime = Math.min(this.animationTime, 1.0);
     this.textAnimationTime = Math.max(0.0, Math.min((this.animationTime - 1.0) * 10.0, 1.0));
@@ -42,7 +42,7 @@ export class IntroState extends GameState {
       this.fadeOut = true;
     }
 
-    return RenderType.None;
+    return RenderMode.None;
   }
 
   doCanvas(renderer: RendererCanvas): void {

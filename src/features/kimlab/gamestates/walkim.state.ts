@@ -1,5 +1,5 @@
 import { RendererCanvas } from '@utilities/renderer-canvas.util';
-import { GameState, RenderType, StateAction, StateActionType } from 'src/abstract/game-state.abstract';
+import { GameState, RenderMode, StateAction, StateActionType } from 'src/abstract/game-state.abstract';
 import { ImageRequest } from 'src/model/image.model';
 
 export class WalKimState extends GameState {
@@ -9,8 +9,8 @@ export class WalKimState extends GameState {
 
   doInit() {}
 
-  doLogic(deltaTime: number, keyboard: Map<string, boolean>): RenderType {
-    return RenderType.Raycast;
+  doLogic(deltaTime: number, keyboard: Map<string, boolean>): RenderMode {
+    return RenderMode.Raycast;
   }
 
   doCanvas(renderer: RendererCanvas): void {}
