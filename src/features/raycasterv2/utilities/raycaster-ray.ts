@@ -35,7 +35,7 @@ export class RaycasterRays {
 
     // Interestingly, it seems to get stuck in all walls but the top one? Offset the ray?
     // Yes that works - I assume I need to fix up the accuracy in the actual ray cast but I can do that later
-    return castRay(xa, ya, xd, yd, map, false);
+    return castRay(xa, ya, xd, yd, map, -1, -1, false);
   }
 
   // Do a continued ray that slides along the wall and return the result until we hit the distance of 1.0
@@ -50,7 +50,7 @@ export class RaycasterRays {
       yd = 0;
     }
 
-    return castRay(xa, ya, xd, yd, map, false);
+    return castRay(xa, ya, xd, yd, map, -1, -1, false);
   }
 
   // Set the ray to only be the length it was intended to be

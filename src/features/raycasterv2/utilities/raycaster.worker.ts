@@ -37,6 +37,11 @@ let lightRayCountDrop = 50000;
 let lightRayCountIncrease = 20000;
 let lightRayModOffsets: number[] = [];
 
+// Make a random push block in an empty space
+let pushBlockX: number;
+let pushBlockY: number;
+let pushBlockTexture: number;
+
 addEventListener('message', ({ data }) => {
   if (data.messageType === 'draw') {
     postMessage(drawScene(data));
@@ -62,6 +67,11 @@ function initScene(data: any) {
 }
 
 function drawScene(data: any) {
+  // Get the pushBlock update from the data
+  pushBlockX = data.pushBlockX;
+  pushBlockY = data.pushBlockY;
+  pushBlockTexture = data.pushBlockTexture;
+
   // reset rays cast amount
   resetRayCount();
 
@@ -93,6 +103,8 @@ function drawScene(data: any) {
       screenRay.x,
       screenRay.y,
       map.mapData,
+      pushBlockX,
+      pushBlockY,
       false,
     );
     depthList.push(rayResult.distance);
@@ -113,11 +125,16 @@ function drawScene(data: any) {
     // look at last mapCoord to see what texture to use
     let textureId = 0;
     let mapCoordLast = rayResult.mapCoords[rayResult.mapCoords.length - 1];
-    textureId = mapCoordLast.wallTexture;
+    if (mapCoordLast.type === BlockType.Push) {
+      textureId = pushBlockTexture;
+    } else {
+      textureId = mapCoordLast.wallTexture;
+    }
 
     let isDoor = false;
     let mapCoordSecondLast = rayResult.mapCoords[rayResult.mapCoords.length - 2];
     if (
+      !(mapCoordLast.type === BlockType.Push) &&
       mapCoordSecondLast &&
       (mapCoordSecondLast.type === BlockType.XDoor || mapCoordSecondLast.type === BlockType.YDoor)
     ) {
@@ -598,7 +615,24 @@ function getScreenRayVectors(
   return initialRays;
 }
 
-// Perhaps can do the ray lighting here too
+function getLightingAtRandom(
+  x: number,
+  y: number,
+  map: RaycasterMap,
+  mapCoord: Block,
+  alwaysCheckRay: boolean,
+  offsetRay = false,
+) {
+  let col: Colour = {
+    red: ((x + y) * 10) % 1.0,
+    green: ((-x + y) * 10) % 1.0,
+    blue: ((x - y) * 10) % 1.0,
+  };
+
+  return col;
+}
+
+// proper ver
 function getLightingAt(
   x: number,
   y: number,
@@ -631,7 +665,11 @@ function getLightingAt(
   const bottomCol = blendColours(bl, br, xpc1, xpc2);
   const midCol = blendColours(topCol, bottomCol, ypc1, ypc2);
 
-  for (let light of mapCoord.lights) {
+  let lightList = mapCoord.lights;
+  if (mapCoord.type === BlockType.Push) {
+    lightList = map.lights;
+  }
+  for (let light of lightList) {
     const xd = x - light.adjustedX + (offsetRay ? 0.0001 : 0);
     const yd = y - light.adjustedY + (offsetRay ? 0.0001 : 0);
     const xa = light.adjustedX;
@@ -648,7 +686,8 @@ function getLightingAt(
       // not sure why but if the distance is 1.0 in either direction, it breaks! I can't understand, it only impacts floors and sprites
       if (!lightHit) {
         lightHit =
-          !light.castShadows || castRay(xa, ya, xd, yd, map.mapData, true).distance >= 0.999;
+          !light.castShadows ||
+          castRay(xa, ya, xd, yd, map.mapData, pushBlockX, pushBlockY, true).distance >= 0.999;
       }
 
       if (lightHit) {

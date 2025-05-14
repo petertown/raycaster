@@ -18,6 +18,8 @@ export function castRay(
   xd: number,
   yd: number,
   map: Block[][],
+  pushBlockX: number,
+  pushBlockY: number,
   stopAtMax = false,
   onlyTestWalls = false,
 ): RayResult {
@@ -88,7 +90,11 @@ export function castRay(
 
   // Loop until we reach a limit or a wall - make sure to limit so we don't go out of bounds!
   let hit = false;
+  let hitX = 0;
+  let hitY = 0;
   let tests = 0;
+  let textureCoord = 0;
+  let rayDistance = 0;
 
   // stop when we hit max if we have set stopAtMax
   while (!hit && (currentLength < 1.0 || !stopAtMax)) {
@@ -110,22 +116,30 @@ export function castRay(
         let wallX2 = blockX + 1;
 
         // so when does the Y meet?
-        let rayDistance = (wallY - startY) / vectY;
+        rayDistance = (wallY - startY) / vectY;
         // where is X then?
-        let hitX = startX + vectX * rayDistance;
+        hitX = startX + vectX * rayDistance;
 
         // TODO: Will need to take into account opening and closing of the half wall (as in, some parts of the wall are open or closed)
         if (rayDistance > 0 && hitX >= wallX1 && hitX <= wallX2) {
+          textureCoord = hitX - wallX1;
+          hitY = wallY;
+          // check if any pushwalls first
+          currentLength = rayDistance;
+          currentX = hitX;
+          currentY = hitY;
+          checkPushBlock();
+
           // return the hit of this half wall
           return {
             xa: xa,
             ya: ya,
             xd: xd,
             yd: yd,
-            xHit: hitX,
-            yHit: wallY,
-            distance: rayDistance,
-            textureCoord: hitX - wallX1,
+            xHit: currentX,
+            yHit: currentY,
+            distance: currentLength,
+            textureCoord: textureCoord,
             wallX: false,
             edge: false,
             mapCoords: mapCoords,
@@ -148,16 +162,25 @@ export function castRay(
         let hitY = startY + vectY * rayDistance;
 
         if (rayDistance > 0 && hitY >= wallY1 && hitY <= wallY2) {
+          textureCoord = hitY - wallY1;
+          hitX = wallX;
+          currentX = hitX;
+          currentY = hitY;
+
+          // check if any pushwalls first
+          currentLength = rayDistance;
+          checkPushBlock();
+
           // return the hit of this half wall
           return {
             xa: xa,
             ya: ya,
             xd: xd,
             yd: yd,
-            xHit: wallX,
-            yHit: hitY,
-            distance: rayDistance,
-            textureCoord: hitY - wallY1,
+            xHit: currentX,
+            yHit: currentY,
+            distance: currentLength,
+            textureCoord: textureCoord,
             wallX: true,
             edge: false,
             mapCoords: mapCoords,
@@ -237,8 +260,11 @@ export function castRay(
     }
   }
 
-  let textureCoord = wallX ? currentY * changeX : -currentX * changeY;
+  textureCoord = wallX ? currentY * changeX : -currentX * changeY;
   textureCoord = textureCoord - Math.floor(textureCoord);
+
+  // Test pushblock
+  checkPushBlock();
 
   return {
     xa: xa,
@@ -253,4 +279,84 @@ export function castRay(
     edge: hitEdge,
     mapCoords: mapCoords,
   };
+
+  // inner function because it is used a few times here - so it uses same vars etc
+  function checkPushBlock() {
+    if (pushBlockX < 0) {
+      return;
+    }
+    const blockTLX = pushBlockX;
+    const blockTLY = pushBlockY;
+    const blockBRX = pushBlockX + 1;
+    const blockBRY = pushBlockY + 1;
+    let hitPushBlock = false;
+    let hitX: number;
+    let hitY: number;
+
+    // check where x is when y is at top
+    // so when does the Y meet?
+    rayDistance = (blockTLY - ya) / yd;
+    // where is X then?
+    hitX = xa + xd * rayDistance;
+    if (hitX >= blockTLX && hitX <= blockBRX && rayDistance > 0 && rayDistance < currentLength) {
+      currentLength = rayDistance;
+      currentX = hitX;
+      currentY = blockTLY;
+      textureCoord = 1 - (hitX - blockTLX);
+      hitPushBlock = true;
+    }
+
+    // check where x is when y is at bottom
+    rayDistance = (blockBRY - ya) / yd;
+    hitX = xa + xd * rayDistance;
+    if (hitX >= blockTLX && hitX <= blockBRX && rayDistance > 0 && rayDistance < currentLength) {
+      currentLength = rayDistance;
+      currentX = hitX;
+      currentY = blockBRY;
+      textureCoord = hitX - blockTLX;
+      hitPushBlock = true;
+    }
+
+    // check where y is when x is at top
+    rayDistance = (blockTLX - xa) / xd;
+    hitY = ya + yd * rayDistance;
+    if (hitY >= blockTLY && hitY <= blockBRY && rayDistance > 0 && rayDistance < currentLength) {
+      currentLength = rayDistance;
+      currentX = blockTLX;
+      currentY = hitY;
+      textureCoord = hitY - blockTLY;
+      hitPushBlock = true;
+    }
+
+    // check where y is when x is at bottom
+    rayDistance = (blockBRX - xa) / xd;
+    hitY = ya + yd * rayDistance;
+    if (hitY >= blockTLY && hitY <= blockBRY && rayDistance > 0 && rayDistance < currentLength) {
+      currentLength = rayDistance;
+      currentX = blockBRX;
+      currentY = hitY;
+      textureCoord = 1 - (hitY - blockTLY);
+      hitPushBlock = true;
+    }
+
+    if (hitPushBlock) {
+      // instead of doing that, return a pushblock obj
+      const pushBlock: Block = {
+        x: Math.floor(currentX),
+        y: Math.floor(currentY),
+        type: BlockType.Push,
+        wallTexture: 15,
+        innerWallTexture: 0,
+        floorTexture: 0,
+        open: 0,
+        lights: [],
+      };
+
+      mapCoords = [];
+      //mapCoords.push(pushBlock);
+      // Push it twice, cos the lighting comes from the prev block
+      // This really is awful code
+      mapCoords.push(pushBlock);
+    }
+  }
 }

@@ -8,6 +8,7 @@ export enum BlockType {
   Wall, // Solid block
   XDoor, // Door in middle along X axis (to be renamed later)
   YDoor, // Door in middle along Y axis
+  Push, // A push wall! So test EVERY light we have
 }
 
 export interface Block {
@@ -88,8 +89,8 @@ export class RaycasterMap {
   textures: RaycasterTextures;
 
   // settings for map building TEMP until it makes a proper map
-  lightSprites = 50;
-  lightMood = 5;
+  lightSprites = 30;
+  lightMood = 10;
   overrideSprites = false;
   overrideSpriteName = 'white3';
   noDoors = false;
@@ -168,6 +169,8 @@ export class RaycasterMap {
                 rotatedDirection.x,
                 rotatedDirection.y,
                 this.mapData,
+                -10,
+                -10,
                 true,
                 true,
               );
@@ -304,6 +307,15 @@ export class RaycasterMap {
         }
       }
     }
+
+    // Now override that so I can test the lighting coords!!
+    /* for (let x = 0; x < this.mapSize + 1; x++) {
+      for (let y = 0; y < this.mapSize + 1; y++) {
+        this.lightData[x][y].red = Math.random();
+        this.lightData[x][y].green = Math.random();
+        this.lightData[x][y].blue = Math.random();
+      }
+    } */
   }
 
   private lightingStats() {
@@ -409,7 +421,6 @@ export class RaycasterMap {
         let green = 1.0;
         let blue = 0.8;
         if (lightTypeTorch) {
-          console.log('Made torch');
           radius *= 0.75;
           type = LightType.Torch;
           red = 1.0;
@@ -660,8 +671,8 @@ export class RaycasterMap {
         // Later we'll cater for the end of the map
         let isBlock = x === 0 || y === 0 || x === this.mapSize - 1 || y === this.mapSize - 1;
 
-        if (Math.random() > 0.75) {
-          isBlock = !isBlock;
+        if (Math.random() > 0.8) {
+          isBlock = true;
         }
         if (distance < 4) {
           isBlock = false;

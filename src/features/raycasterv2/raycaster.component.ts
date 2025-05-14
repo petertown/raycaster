@@ -80,7 +80,11 @@ export class RaycasterComponent {
   frameRate = 0;
   raysCast = 0;
 
-  constructor() {}
+  // Make a random push block in an empty space
+  pushBlockX!: number;
+  pushBlockY!: number;
+  pushBlockTime = 0;
+  pushBlockTexture!: number;
 
   ngAfterViewInit(): void {
     this.initGame().then(() => {
@@ -103,6 +107,13 @@ export class RaycasterComponent {
       this.loadTextures()
         .then(() => {
           this.map = new RaycasterMap(this.mapSize, this.textures);
+
+          // Make push block not too far from the center so we can find it
+          // Just one push block, as this is just a silly hack
+          this.pushBlockX = Math.floor(this.map.mapSize / 2.0 - 4) - 0.5;
+          this.pushBlockY = Math.floor(this.map.mapSize / 2.0 - 4) - 0.5;
+          this.pushBlockTexture = this.textures.getTextureId('BRICKS');
+
           this.renderer2d = new RaycasterRenderer2D(this.map, this.canvas, this.rays);
           this.renderer3d = new RaycasterRenderer3D(
             this.map,
@@ -322,6 +333,9 @@ export class RaycasterComponent {
       projectionLength: this.canvas.projectionLength,
       updatedMapData: this.map.getUpdatedMapData(),
       updatedLightData: this.map.getUpdatedLightData(),
+      pushBlockX: this.pushBlockX,
+      pushBlockY: this.pushBlockY,
+      pushBlockTexture: this.pushBlockTexture,
     });
   };
 
@@ -409,7 +423,9 @@ export class RaycasterComponent {
         // Do one ray, then do another
         // and at the end we don't care about the actual rayResults, we care about the difference between start and end
         // divided by 4 of course
-        let rayResult1 = this.rays.capRay(castRay(colX, colY, rayX, rayY, collisionMap, false));
+        let rayResult1 = this.rays.capRay(
+          castRay(colX, colY, rayX, rayY, collisionMap, -100, -100, false),
+        );
         let differenceX = rayResult1.xHit - colX;
         let differenceY = rayResult1.yHit - colY;
 
@@ -449,13 +465,26 @@ export class RaycasterComponent {
     this.renderZ = this.playerZ + Math.cos(this.renderWalkTime) * this.playerSpeed * 2.0;
     this.renderR = this.playerR;
     this.renderV = this.playerV;
+
+    this.pushBlockTime += this.timeDelta / 10000.0;
+    this.pushBlockX = this.mapSize / 2.0 + Math.cos(this.pushBlockTime) * 5;
+    this.pushBlockY = this.mapSize / 2.0 + Math.sin(this.pushBlockTime) * 5;
   }
 
   doAction() {
     // find action from player position by doing a ray from the player and seeing what we hit
     let rayX = Math.cos(this.playerR);
     let rayY = Math.sin(this.playerR);
-    let actionResult = castRay(this.playerX, this.playerY, rayX, rayY, this.map.mapData, false);
+    let actionResult = castRay(
+      this.playerX,
+      this.playerY,
+      rayX,
+      rayY,
+      this.map.mapData,
+      -100,
+      -100,
+      false,
+    );
 
     // If we got anything back - check before doing anything
     if (actionResult.mapCoords.length > 0) {

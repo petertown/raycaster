@@ -62,6 +62,9 @@ export class RaycasterTextures {
   }
 
   public getTextureId(textureName: string): number {
+    // override the texture
+    // textureName = 'white3';
+
     let textureId = this.textureList.findIndex((element) => {
       return element.name === textureName;
     });
