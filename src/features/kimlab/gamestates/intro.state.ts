@@ -1,7 +1,12 @@
-import { RenderAlignment, RendererCanvas } from '@utilities/renderer-canvas.util';
-import { GameState, RenderMode, StateAction, StateActionType } from 'src/abstract/game-state.abstract';
-import { ImageContainer, ImageRequest } from 'src/model/image.model';
-import { WalKimState } from './walkim.state';
+import {
+  GameState,
+  RenderMode,
+  StateAction,
+  StateActionType,
+} from 'src/abstract/game-state.abstract';
+import { ImageContainer, ImageRequest } from 'src/models/image.model';
+import { RenderAlignment, RendererCanvas } from 'src/renderers/canvas.renderer';
+import { TexGenState } from './texgen.state';
 
 export class IntroState extends GameState {
   logoImage!: ImageContainer;
@@ -81,9 +86,13 @@ export class IntroState extends GameState {
     if (this.fadeOutTime < 1.0) {
       return { action: StateActionType.None, newState: null };
     } else {
-      // make the new state - just recreate this one for now TEMP
-      const walkState = new WalKimState();
-      return { action: StateActionType.Swap, newState: walkState };
+      // make the new state
+      //const walkState = new WalKimState();
+      //return { action: StateActionType.Swap, newState: walkState };
+
+      // Return the texgen state
+      const texState = new TexGenState();
+      return { action: StateActionType.Swap, newState: texState };
     }
   }
 }

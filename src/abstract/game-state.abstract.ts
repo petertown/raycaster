@@ -1,7 +1,7 @@
 // interface that needs to be implemented by every game state
-import { ImageStore } from '@utilities/image-store';
-import { RendererCanvas } from '@utilities/renderer-canvas.util';
-import { ImageRequest } from '../model/image.model';
+import { ImageStore } from 'src/models/image-store.model';
+import { RendererCanvas } from 'src/renderers/canvas.renderer';
+import { ImageRequest } from '../models/image.model';
 
 export enum StateActionType {
   None,

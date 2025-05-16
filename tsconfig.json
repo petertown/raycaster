@@ -21,7 +21,9 @@
     "paths": {
       "@app/*": ["src/app/*"],
       "@features/*": ["src/features/*"],
-      "@utilities/*": ["src/utilities/*"],
+      "@utilities/*": ["src/renderers/*"],
+      "@functions/*": ["src/functions/*"],
+      "@models/*": ["src/models/*"],
       "@public/*": ["public/*"]
     }
   },

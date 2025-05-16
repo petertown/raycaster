@@ -1,5 +1,5 @@
-import { ImageContainer, ImageRequest } from 'src/model/image.model';
-import { ImageStore } from './image-store';
+import { ImageStore } from 'src/models/image-store.model';
+import { ImageContainer, ImageRequest } from 'src/models/image.model';
 
 // This is to get the raw images and store them in memory
 // But don't send it direct to the Web Worker - don't want to send EVERY image

@@ -1,4 +1,4 @@
-import { ImageContainer } from 'src/model/image.model';
+import { ImageContainer } from 'src/models/image.model';
 
 // Come up with the others as I need them for now
 export enum RenderAlignment {
@@ -155,6 +155,18 @@ export class RendererCanvas {
 
     this.ctx.fillText(content, textX, textY, this.canvas.width * this.aspectRatio);
     this.ctx.restore();
+  }
+
+  // This is currently a raw version to just draw some image data so we can see it loop
+  drawImageData(imageData: ImageData) {
+    // TODO: Make it draw it with an alignment/offset
+    // Though that would take manual drawing as putting image data cannot be scaled
+    // So temporary, just loop the texture and I'll make sure my window is the right size
+    for (let x = 0; x < 5; x++) {
+      for (let y = 0; y < 5; y++) {
+        this.ctx.putImageData(imageData, imageData.width * x, imageData.height * y);
+      }
+    }
   }
 
   private transformPoint(point: { x: number; y: number }) {

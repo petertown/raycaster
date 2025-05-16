@@ -1,12 +1,12 @@
 import { Component } from '@angular/core';
-import { RendererCanvas } from '@utilities/renderer-canvas.util';
 import {
   GameState,
   RenderMode,
   StateAction,
   StateActionType,
 } from 'src/abstract/game-state.abstract';
-import { ImageLoader } from '../../utilities/image-loader.util';
+import { RendererCanvas } from 'src/renderers/canvas.renderer';
+import { ImageLoader } from '../../utils/image-loader.util';
 import { IntroState } from './gamestates/intro.state';
 import { RayCastMessageType } from './workers/raycaster.worker';
 
@@ -176,12 +176,14 @@ export class KimlabComponent {
           // Give these images to the state
           newState.setImageList(imageStore);
 
-          // How to send the new map data to the web worker? 
+          // How to send the new map data to the web worker?
           newState.doInit();
 
           resolve(newState);
         });
       } else {
+        // Init even if we have no images
+        newState.doInit();
         resolve(newState);
       }
     });

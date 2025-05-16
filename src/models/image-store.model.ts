@@ -1,4 +1,4 @@
-import { ImageContainer } from 'src/model/image.model';
+import { ImageContainer } from 'src/models/image.model';
 
 export class ImageStore {
   imageList: ImageContainer[];

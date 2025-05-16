@@ -1,6 +1,6 @@
-import { RendererCanvas } from '@utilities/renderer-canvas.util';
 import { GameState, RenderMode, StateAction, StateActionType } from 'src/abstract/game-state.abstract';
-import { ImageRequest } from 'src/model/image.model';
+import { ImageRequest } from 'src/models/image.model';
+import { RendererCanvas } from 'src/renderers/canvas.renderer';
 
 export class WalKimState extends GameState {
   getImageList(): ImageRequest[] {
