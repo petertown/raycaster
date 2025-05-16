@@ -1,5 +1,5 @@
 // interface that needs to be implemented by every game state
-import { ImageStore } from 'src/models/image-store.model';
+import { ImageStore } from 'src/utils/image-store.util';
 import { RendererCanvas } from 'src/renderers/canvas.renderer';
 import { ImageRequest } from '../models/image.model';
 
