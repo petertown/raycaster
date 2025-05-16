@@ -1,4 +1,4 @@
-import { ImageStore } from 'src/models/image-store.model';
+import { ImageStore } from 'src/utils/image-store.util';
 import { ImageContainer, ImageRequest } from 'src/models/image.model';
 
 // This is to get the raw images and store them in memory
